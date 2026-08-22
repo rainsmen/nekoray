@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'widgets/proxy_card.dart';
-import 'widgets/status_bar.dart';
+import '../../widgets/proxy_card.dart';
+import '../../widgets/status_bar.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
