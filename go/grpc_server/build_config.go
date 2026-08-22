@@ -8,6 +8,7 @@ import (
 
 	"grpc_server/core/config"
 	nekokfmt "grpc_server/core/fmt"
+	"grpc_server/core/sub"
 )
 
 // BuildConfig implements the gRPC BuildConfig method.
@@ -71,20 +72,49 @@ func (s *BaseServer) BuildConfig(ctx context.Context, in *gen.BuildConfigReq) (*
 
 // ParseSubscription implements the gRPC ParseSubscription method.
 //
-// Phase-1 MVP: returns empty profile list. Full subscription parsing (raw/clash/
-// sip008) is implemented in a later task.
+// ParseSubscription implements the gRPC ParseSubscription method.
+//
+// Parses subscription content (raw/clash/sip008/base64/auto) and returns
+// the list of decoded profiles.
 func (s *BaseServer) ParseSubscription(ctx context.Context, in *gen.ParseSubReq) (*gen.ParseSubResp, error) {
 	resp := &gen.ParseSubResp{}
-	// TODO phase-1 task 3: implement subscription parsing
+	results := sub.ParseContent(in.Content, in.Format)
+	for _, r := range results {
+		if r.Error != "" {
+			if resp.Error == "" {
+				resp.Error = r.Error
+			} else {
+				resp.Error += "; " + r.Error
+			}
+			continue
+		}
+		if r.Profile == nil {
+			continue
+		}
+		b, err := json.Marshal(r.Profile)
+		if err != nil {
+			continue
+		}
+		resp.Profiles = append(resp.Profiles, b)
+	}
 	return resp, nil
 }
 
 // GenerateShareLink implements the gRPC GenerateShareLink method.
 //
-// Phase-1 MVP: returns empty link. Full link generation is implemented in a
-// later task.
+// Generates a share link (v2rayn-style) for the given profile.
 func (s *BaseServer) GenerateShareLink(ctx context.Context, in *gen.ShareLinkReq) (*gen.ShareLinkResp, error) {
 	resp := &gen.ShareLinkResp{}
-	// TODO phase-1 task 3: implement link generation
+	var ent nekokfmt.ProxyEntity
+	if err := json.Unmarshal(in.ProfileJson, &ent); err != nil {
+		resp.Error = "invalid profile_json: " + err.Error()
+		return resp, nil
+	}
+	link, err := sub.GenerateLink(&ent, in.Format)
+	if err != nil {
+		resp.Error = err.Error()
+		return resp, nil
+	}
+	resp.Link = link
 	return resp, nil
 }

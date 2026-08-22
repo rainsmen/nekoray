@@ -30,3 +30,8 @@ pushd go/cmd/nekobox_core
 go mod tidy
 go build -v -o $DEST -trimpath -ldflags "-w -s -X github.com/matsuridayo/libneko/neko_common.Version_neko=$version_standalone" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
 popd
+
+#### Go: migrator (phase 1 data migration tool) ####
+pushd go/cmd/migrator
+go build -v -o $DEST -trimpath -ldflags "-w -s"
+popd

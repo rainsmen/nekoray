@@ -29,6 +29,8 @@ const (
 	LibcoreService_BuildConfig_FullMethodName       = "/libcore.LibcoreService/BuildConfig"
 	LibcoreService_ParseSubscription_FullMethodName = "/libcore.LibcoreService/ParseSubscription"
 	LibcoreService_GenerateShareLink_FullMethodName = "/libcore.LibcoreService/GenerateShareLink"
+	LibcoreService_UpdateRuleSet_FullMethodName     = "/libcore.LibcoreService/UpdateRuleSet"
+	LibcoreService_ListRuleSets_FullMethodName      = "/libcore.LibcoreService/ListRuleSets"
 )
 
 // LibcoreServiceClient is the client API for LibcoreService service.
@@ -46,6 +48,9 @@ type LibcoreServiceClient interface {
 	BuildConfig(ctx context.Context, in *BuildConfigReq, opts ...grpc.CallOption) (*BuildConfigResp, error)
 	ParseSubscription(ctx context.Context, in *ParseSubReq, opts ...grpc.CallOption) (*ParseSubResp, error)
 	GenerateShareLink(ctx context.Context, in *ShareLinkReq, opts ...grpc.CallOption) (*ShareLinkResp, error)
+	// Phase 1: rule_set management (sing-box MRS format)
+	UpdateRuleSet(ctx context.Context, in *UpdateRuleSetReq, opts ...grpc.CallOption) (*ErrorResp, error)
+	ListRuleSets(ctx context.Context, in *EmptyReq, opts ...grpc.CallOption) (*ListRuleSetsResp, error)
 }
 
 type libcoreServiceClient struct {
@@ -146,6 +151,24 @@ func (c *libcoreServiceClient) GenerateShareLink(ctx context.Context, in *ShareL
 	return out, nil
 }
 
+func (c *libcoreServiceClient) UpdateRuleSet(ctx context.Context, in *UpdateRuleSetReq, opts ...grpc.CallOption) (*ErrorResp, error) {
+	out := new(ErrorResp)
+	err := c.cc.Invoke(ctx, LibcoreService_UpdateRuleSet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *libcoreServiceClient) ListRuleSets(ctx context.Context, in *EmptyReq, opts ...grpc.CallOption) (*ListRuleSetsResp, error) {
+	out := new(ListRuleSetsResp)
+	err := c.cc.Invoke(ctx, LibcoreService_ListRuleSets_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LibcoreServiceServer is the server API for LibcoreService service.
 // All implementations must embed UnimplementedLibcoreServiceServer
 // for forward compatibility
@@ -161,6 +184,9 @@ type LibcoreServiceServer interface {
 	BuildConfig(context.Context, *BuildConfigReq) (*BuildConfigResp, error)
 	ParseSubscription(context.Context, *ParseSubReq) (*ParseSubResp, error)
 	GenerateShareLink(context.Context, *ShareLinkReq) (*ShareLinkResp, error)
+	// Phase 1: rule_set management (sing-box MRS format)
+	UpdateRuleSet(context.Context, *UpdateRuleSetReq) (*ErrorResp, error)
+	ListRuleSets(context.Context, *EmptyReq) (*ListRuleSetsResp, error)
 	mustEmbedUnimplementedLibcoreServiceServer()
 }
 
@@ -197,6 +223,12 @@ func (UnimplementedLibcoreServiceServer) ParseSubscription(context.Context, *Par
 }
 func (UnimplementedLibcoreServiceServer) GenerateShareLink(context.Context, *ShareLinkReq) (*ShareLinkResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateShareLink not implemented")
+}
+func (UnimplementedLibcoreServiceServer) UpdateRuleSet(context.Context, *UpdateRuleSetReq) (*ErrorResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateRuleSet not implemented")
+}
+func (UnimplementedLibcoreServiceServer) ListRuleSets(context.Context, *EmptyReq) (*ListRuleSetsResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListRuleSets not implemented")
 }
 func (UnimplementedLibcoreServiceServer) mustEmbedUnimplementedLibcoreServiceServer() {}
 
@@ -391,6 +423,42 @@ func _LibcoreService_GenerateShareLink_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LibcoreService_UpdateRuleSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateRuleSetReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LibcoreServiceServer).UpdateRuleSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LibcoreService_UpdateRuleSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LibcoreServiceServer).UpdateRuleSet(ctx, req.(*UpdateRuleSetReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LibcoreService_ListRuleSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EmptyReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LibcoreServiceServer).ListRuleSets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LibcoreService_ListRuleSets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LibcoreServiceServer).ListRuleSets(ctx, req.(*EmptyReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LibcoreService_ServiceDesc is the grpc.ServiceDesc for LibcoreService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -437,6 +505,14 @@ var LibcoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GenerateShareLink",
 			Handler:    _LibcoreService_GenerateShareLink_Handler,
+		},
+		{
+			MethodName: "UpdateRuleSet",
+			Handler:    _LibcoreService_UpdateRuleSet_Handler,
+		},
+		{
+			MethodName: "ListRuleSets",
+			Handler:    _LibcoreService_ListRuleSets_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"grpc_server"
@@ -13,6 +14,7 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/experimental/v2rayapi"
 	"github.com/sagernet/sing/service"
 
 	_ "unsafe" // for go:linkname version injection if needed
@@ -131,24 +133,30 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 }
 
 // QueryStats returns the traffic counter for the given outbound tag.
+//
+// On upstream sing-box, the V2RayServer's StatsService is obtained from the
+// service registry. Its GetStats method returns the counter value for a name
+// of the form "outbound>>>tag>>>traffic>>>direct|uplink|downlink".
 func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *gen.QueryStatsResp, _ error) {
 	out = &gen.QueryStatsResp{}
 
-	if instance != nil {
-		// On upstream sing-box, V2RayServer is registered via the service
-		// registry. Stats are queried through its StatsService().
+	if instance != nil && instanceCtx != nil {
 		v2rayServer := service.FromContext[adapter.V2RayServer](instanceCtx)
 		if v2rayServer != nil {
 			tracker := v2rayServer.StatsService()
 			if tracker != nil {
-				// RoutedConnection/RoutedPacketConnection track stats when the
-				// outbound has stats enabled. The legacy neko boxapi exposed a
-				// QueryStats(name) helper; upstream uses ConnectionTracker
-				// interface which does not expose a direct query, so we keep
-				// the gRPC field but return 0 for now until the connection
-				// tracker API is extended (see DECISIONS.md).
-				_ = tracker
-				_ = in
+				// The concrete *v2rayapi.StatsService exposes GetStats,
+				// which is not on the ConnectionTracker interface.
+				type statsQueryer interface {
+					GetStats(ctx context.Context, request *v2rayapi.GetStatsRequest) (*v2rayapi.GetStatsResponse, error)
+				}
+				if q, ok := tracker.(statsQueryer); ok {
+					name := fmt.Sprintf("outbound>>>%s>>>traffic>>>%s", in.Tag, in.Direct)
+					resp, err := q.GetStats(ctx, &v2rayapi.GetStatsRequest{Name: name})
+					if err == nil && resp != nil && resp.Stat != nil {
+						out.Traffic = resp.Stat.Value
+					}
+				}
 			}
 		}
 	}
@@ -157,11 +165,13 @@ func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *ge
 }
 
 // ListConnections lists active connections.
+// ListConnections lists active connections.
 //
-// TODO: implement via the upstream Clash API (/connections) or V2Ray API.
+// Phase-1: returns empty. Full connection tracking requires either the
+// Clash API (/connections, needs experimental.clash_api enabled in config) or
+// the V2Ray API connection tracker. This is implemented in phase 2 together
+// with the Flutter connection-management UI.
 func (s *server) ListConnections(ctx context.Context, in *gen.EmptyReq) (*gen.ListConnectionsResp, error) {
-	out := &gen.ListConnectionsResp{
-		// TODO upstream api
-	}
+	out := &gen.ListConnectionsResp{}
 	return out, nil
 }

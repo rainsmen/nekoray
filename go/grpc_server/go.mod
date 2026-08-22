@@ -1,12 +1,13 @@
 module grpc_server
 
-go 1.19
+go 1.22
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/matsuridayo/libneko v1.0.0 // replaced
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.28.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
