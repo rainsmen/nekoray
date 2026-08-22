@@ -21,15 +21,15 @@ func GenerateLink(ent *nekokfmt.ProxyEntity, format string) (string, error) {
 
 	switch b := bean.(type) {
 	case *nekokfmt.SocksHttpBean:
-		return genSocksHTTPLink(b)
+		return genSocksHTTPLink(b), nil
 	case *nekokfmt.VMessBean:
-		return genVMessLink(b, format)
+		return genVMessLink(b, format), nil
 	case *nekokfmt.TrojanVLESSBean:
-		return genTrojanVLESSLink(b)
+		return genTrojanVLESSLink(b), nil
 	case *nekokfmt.ShadowSocksBean:
-		return genShadowsocksLink(b)
+		return genShadowsocksLink(b), nil
 	case *nekokfmt.QUICBean:
-		return genQUICLink(b)
+		return genQUICLink(b), nil
 	default:
 		return "", fmt.Errorf("unsupported bean type for link generation")
 	}
