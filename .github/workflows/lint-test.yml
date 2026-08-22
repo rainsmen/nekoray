@@ -36,7 +36,11 @@ jobs:
 
       - name: Go test
         working-directory: go/cmd/nekobox_core
-        run: go test ./... -v -cover
+        run: |
+          go test ./... -v -cover
+          # also test the grpc_server module (where core config builder lives)
+          cd ../../grpc_server
+          go test ./... -v -cover
 
   cpp-check:
     runs-on: ubuntu-latest
