@@ -41,7 +41,7 @@ func buildChain(status *BuildStatus, result *BuildResult) string {
 
 	// outbound misc
 	outbound["tag"] = tagOut
-	status.OutboundStats = append(status.OutboundStats, OutboundStat{
+	result.OutboundStats = append(result.OutboundStats, OutboundStat{
 		Id:  ent.Id,
 		Tag: tagOut,
 	})
@@ -433,7 +433,7 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	}
 
 	allRules := []interface{}{}
-	allRules := append(allRules, customRules...)
+	allRules = append(allRules, customRules...)
 	allRules = append(allRules, customGlobalRules...)
 	for _, r := range status.RoutingRules {
 		allRules = append(allRules, r)
