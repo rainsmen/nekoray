@@ -8,13 +8,8 @@ pushd ..
 
 ####
 
-if [ ! -d "sing-box" ]; then
-  git clone --no-checkout https://github.com/MatsuriDayo/sing-box.git
-fi
-pushd sing-box
-git checkout "$COMMIT_SING_BOX"
-
-popd
+# sing-box: now pulled from upstream module (v1.13.19) via go.mod require.
+# No local clone needed since the replace directive was removed.
 
 ####
 

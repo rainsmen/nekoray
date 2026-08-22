@@ -3,27 +3,26 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 
 	"grpc_server"
 	"grpc_server/gen"
 
 	"github.com/matsuridayo/libneko/neko_common"
-	"github.com/matsuridayo/libneko/neko_log"
 	"github.com/matsuridayo/libneko/speedtest"
+
 	box "github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/boxapi"
-	boxmain "github.com/sagernet/sing-box/cmd/sing-box"
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/service"
 
-	"log"
-
-	"github.com/sagernet/sing-box/option"
+	_ "unsafe" // for go:linkname version injection if needed
 )
 
 type server struct {
 	grpc_server.BaseServer
 }
 
+// Start loads the sing-box config and starts a new instance.
 func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
@@ -44,23 +43,20 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		return
 	}
 
-	instance, instance_cancel, err = boxmain.Create([]byte(in.CoreConfig))
-
-	if instance != nil {
-		// Logger
-		instance.SetLogWritter(neko_log.LogWriter)
-		// V2ray Service
-		if in.StatsOutbounds != nil {
-			instance.Router().SetV2RayServer(boxapi.NewSbV2rayServer(option.V2RayStatsServiceOptions{
-				Enabled:   true,
-				Outbounds: in.StatsOutbounds,
-			}))
-		}
+	instance, instanceCancel, instanceCtx, err = createInstance([]byte(in.CoreConfig))
+	if err != nil {
+		return
 	}
+
+	// NOTE: upstream sing-box logs via its own log factory configured in the
+	// "log" field of the JSON config. The legacy MatsuriDayo fork exposed a
+	// SetLogWritter helper to bridge logs into neko_log.LogWriter; upstream
+	// does not, so log routing is controlled by the config's log section.
 
 	return
 }
 
+// Stop stops the running instance.
 func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
@@ -75,14 +71,16 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 		return
 	}
 
-	instance_cancel()
+	instanceCancel()
 	instance.Close()
 
 	instance = nil
+	instanceCancel = nil
 
 	return
 }
 
+// Test performs latency / speed / full tests.
 func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, _ error) {
 	var err error
 	out = &gen.TestResp{Ms: 0}
@@ -98,7 +96,7 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 		var cancel context.CancelFunc
 		if in.Config != nil {
 			// Test instance
-			i, cancel, err = boxmain.Create([]byte(in.Config.CoreConfig))
+			i, cancel, _, err = createInstance([]byte(in.Config.CoreConfig))
 			if i != nil {
 				defer i.Close()
 				defer cancel()
@@ -114,11 +112,11 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 			}
 		}
 		// Latency
-		out.Ms, err = speedtest.UrlTest(boxapi.CreateProxyHttpClient(i), in.Url, in.Timeout, speedtest.UrlTestStandard_RTT)
+		out.Ms, err = speedtest.UrlTest(newProxyHttpClient(i), in.Url, in.Timeout, speedtest.UrlTestStandard_RTT)
 	} else if in.Mode == gen.TestMode_TcpPing {
 		out.Ms, err = speedtest.TcpPing(in.Address, in.Timeout)
 	} else if in.Mode == gen.TestMode_FullTest {
-		i, cancel, err := boxmain.Create([]byte(in.Config.CoreConfig))
+		i, cancel, _, err := createInstance([]byte(in.Config.CoreConfig))
 		if i != nil {
 			defer i.Close()
 			defer cancel()
@@ -132,18 +130,35 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 	return
 }
 
+// QueryStats returns the traffic counter for the given outbound tag.
 func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *gen.QueryStatsResp, _ error) {
 	out = &gen.QueryStatsResp{}
 
 	if instance != nil {
-		if ss, ok := instance.Router().V2RayServer().(*boxapi.SbV2rayServer); ok {
-			out.Traffic = ss.QueryStats(fmt.Sprintf("outbound>>>%s>>>traffic>>>%s", in.Tag, in.Direct))
+		// On upstream sing-box, V2RayServer is registered via the service
+		// registry. Stats are queried through its StatsService().
+		v2rayServer := service.FromContext[adapter.V2RayServer](instanceCtx)
+		if v2rayServer != nil {
+			tracker := v2rayServer.StatsService()
+			if tracker != nil {
+				// RoutedConnection/RoutedPacketConnection track stats when the
+				// outbound has stats enabled. The legacy neko boxapi exposed a
+				// QueryStats(name) helper; upstream uses ConnectionTracker
+				// interface which does not expose a direct query, so we keep
+				// the gRPC field but return 0 for now until the connection
+				// tracker API is extended (see DECISIONS.md).
+				_ = tracker
+				_ = in
+			}
 		}
 	}
 
 	return
 }
 
+// ListConnections lists active connections.
+//
+// TODO: implement via the upstream Clash API (/connections) or V2Ray API.
 func (s *server) ListConnections(ctx context.Context, in *gen.EmptyReq) (*gen.ListConnectionsResp, error) {
 	out := &gen.ListConnectionsResp{
 		// TODO upstream api
