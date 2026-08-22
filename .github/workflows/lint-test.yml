@@ -36,7 +36,7 @@ jobs:
 
       - name: Go test
         working-directory: go/cmd/nekobox_core
-        run: go test ./... -v -cover 2>&1 || true
+        run: go test ./... -v -cover
 
   cpp-check:
     runs-on: ubuntu-latest
