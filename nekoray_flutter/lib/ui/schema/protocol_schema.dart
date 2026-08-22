@@ -5,8 +5,6 @@
 // adding a new protocol only requires registering a new schema — no UI code
 // changes.
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 enum FieldType { text, number, password, combo, bool_, tls, stream }
 
 class FieldSchema {
