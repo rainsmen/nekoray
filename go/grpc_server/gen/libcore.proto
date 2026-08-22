@@ -17,6 +17,10 @@ service LibcoreService {
   rpc BuildConfig(BuildConfigReq) returns (BuildConfigResp) {}
   rpc ParseSubscription(ParseSubReq) returns (ParseSubResp) {}
   rpc GenerateShareLink(ShareLinkReq) returns (ShareLinkResp) {}
+
+  // Phase 1: rule_set management (sing-box MRS format)
+  rpc UpdateRuleSet(UpdateRuleSetReq) returns (ErrorResp) {}
+  rpc ListRuleSets(EmptyReq) returns (ListRuleSetsResp) {}
 }
 
 message EmptyReq {}
@@ -134,4 +138,26 @@ message ShareLinkReq {
 message ShareLinkResp {
   string error = 1;
   string link = 2;
+}
+
+// Phase 1: rule_set management (sing-box MRS format)
+
+message UpdateRuleSetReq {
+  string url = 1;
+  string tag = 2;
+  string format = 3;        // "source" or "binary"
+  bool download = 4;        // if false, only register; if true, fetch now
+}
+
+message RuleSetInfo {
+  string tag = 1;
+  string type = 2;          // "remote" or "local"
+  string format = 3;        // "source" or "binary"
+  string url = 4;
+  int64  updated_at = 5;
+  int64  size = 6;
+}
+
+message ListRuleSetsResp {
+  repeated RuleSetInfo rule_sets = 1;
 }
