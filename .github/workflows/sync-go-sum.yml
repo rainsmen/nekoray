@@ -1,0 +1,55 @@
+name: Sync go.sum
+
+# Runs `go mod tidy` for nekobox_core and commits the updated go.sum back.
+# This is needed because the dependency tree changed after the sing-box
+# upgrade, and CI is the only environment with Go + module cache available.
+
+on:
+  push:
+    branches: [feature/core-v2]
+    paths:
+      - 'go/cmd/nekobox_core/go.mod'
+      - 'libs/get_source_env.sh'
+      - 'libs/get_source.sh'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: go/cmd/nekobox_core/go.sum
+
+      - name: Get sources (libneko / sing-quic for replace directives)
+        run: ./libs/get_source.sh
+
+      - name: Run go mod tidy
+        working-directory: go/cmd/nekobox_core
+        run: |
+          go mod tidy
+          git diff --stat go.sum || true
+
+      - name: Commit changes
+        working-directory: go/cmd/nekobox_core
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go.sum go.mod
+          if git diff --cached --quiet; then
+            echo "no changes to commit"
+          else
+            git commit -m "chore(core): sync go.sum after go mod tidy [skip ci]"
+            git push
+          fi
