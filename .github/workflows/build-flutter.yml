@@ -2,7 +2,7 @@ name: Build Flutter
 
 on:
   push:
-    branches: [dev, feature/flutter]
+    branches: [dev, feature/flutter, feature/flutter-grpc]
     paths:
       - 'nekoray_flutter/**'
       - 'go/**'
@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         working-directory: nekoray_flutter
         run: flutter pub get
+      - name: Generate code (freezed/json)
+        working-directory: nekoray_flutter
+        run: dart run build_runner build --delete-conflicting-outputs
       - name: Analyze
         working-directory: nekoray_flutter
         run: flutter analyze
@@ -40,6 +43,9 @@ jobs:
       - name: Install dependencies
         working-directory: nekoray_flutter
         run: flutter pub get
+      - name: Generate code (freezed/json)
+        working-directory: nekoray_flutter
+        run: dart run build_runner build --delete-conflicting-outputs
       - name: Test
         working-directory: nekoray_flutter
         run: flutter test --coverage || echo "no tests yet"
@@ -80,6 +86,10 @@ jobs:
       - name: Install dependencies
         working-directory: nekoray_flutter
         run: flutter pub get
+
+      - name: Generate code (freezed/json)
+        working-directory: nekoray_flutter
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Enable platforms
         working-directory: nekoray_flutter
