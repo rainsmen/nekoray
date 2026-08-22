@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+# nekobox_core build script (phase 1: sing-box v1.13.19 upgrade)
 
 source libs/env_deploy.sh
 [ "$GOOS" == "windows" ] && [ "$GOARCH" == "amd64" ] && DEST=$DEPLOYMENT/windows64 || true
