@@ -1,0 +1,55 @@
+name: Generate Proto
+
+# Regenerates Go gRPC stubs from libcore.proto and commits the result.
+# Run manually after editing go/grpc_server/gen/libcore.proto.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/core-v2]
+    paths:
+      - 'go/grpc_server/gen/libcore.proto'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.1"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.33.0
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
+
+      - name: Generate Go stubs
+        working-directory: go/grpc_server/gen
+        run: |
+          protoc -I . --go_out=. --go_opt paths=source_relative \
+            --go-grpc_out=. --go-grpc_opt paths=source_relative libcore.proto
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add go/grpc_server/gen/*.go
+          if git diff --cached --quiet; then
+            echo "no proto changes to commit"
+          else
+            git commit -m "chore(proto): regenerate gRPC stubs from libcore.proto [skip ci]"
+            git push
+          fi

@@ -38,6 +38,14 @@ MatsuriDayo fork 提供了三个定制包，上游 v1.13.19 的等价实现如�
   - `neko_log`：日志可换用 sing-box 自带 logger
   - `speedtest`：URL 测试可自行实现（逻辑简单）或保留 libneko
 
+### 状态
+- ✅ 已完成（2025-08-22）：sing-box 从 MatsuriDayo fork 切换到上游 v1.13.19
+- ✅ 多平台 CI 编译通过（windows/linux/darwin amd64+arm64）
+- ✅ go vet / go build 通过
+- 关键发现：上游已废弃 `with_ech` build tag（迁移到 stdlib），需从 build_go.sh 移除
+- 关键发现：上游 `cmd/sing-box` 是 package main 无导出 Main()，nekobox_core 不再委托 CLI
+- go.sum 由 `sync-go-sum` workflow 自动生成并提交回仓库
+
 ## 决策 D2：libneko 处理（2025-08-20 确定）
 
 ### 决策

@@ -12,6 +12,11 @@ service LibcoreService {
   rpc Test(TestReq) returns (TestResp) {}
   rpc QueryStats(QueryStatsReq) returns (QueryStatsResp) {}
   rpc ListConnections(EmptyReq) returns (ListConnectionsResp) {}
+
+  // Phase 1: config building / subscription parsing moved to core
+  rpc BuildConfig(BuildConfigReq) returns (BuildConfigResp) {}
+  rpc ParseSubscription(ParseSubReq) returns (ParseSubResp) {}
+  rpc GenerateShareLink(ShareLinkReq) returns (ShareLinkResp) {}
 }
 
 message EmptyReq {}
@@ -91,4 +96,42 @@ message UpdateResp {
 
 message ListConnectionsResp {
   string nekoray_connections_json = 1;
+}
+
+// Phase 1: config building / subscription parsing
+
+message BuildConfigReq {
+  // Serialized NekoGui data (JSON), mirroring the C++ JsonStore layout.
+  bytes profile_json = 1;      // ProxyEntity
+  bytes group_json = 2;       // Group
+  bytes routing_json = 3;     // Routing
+  bytes datastore_json = 4;   // DataStore (global settings)
+  bool for_test = 5;
+  bool for_export = 6;
+}
+
+message BuildConfigResp {
+  string error = 1;
+  string core_config = 2;     // Full sing-box config JSON
+  bytes ext_results = 3;     // ExternalBuildResult list (JSON)
+}
+
+message ParseSubReq {
+  string content = 1;
+  string format = 2;          // "auto", "raw", "clash", "sip008", "base64"
+}
+
+message ParseSubResp {
+  string error = 1;
+  repeated bytes profiles = 2;  // ProxyEntity JSON array
+}
+
+message ShareLinkReq {
+  bytes profile_json = 1;
+  string format = 2;          // "nekoray", "v2rayn", "clash"
+}
+
+message ShareLinkResp {
+  string error = 1;
+  string link = 2;
 }
