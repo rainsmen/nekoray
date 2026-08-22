@@ -114,7 +114,7 @@ class DynamicFormState extends State<DynamicForm> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
-            value: dropdownValue,
+            initialValue: dropdownValue,
             decoration: InputDecoration(
               labelText: f.label,
               border: const OutlineInputBorder(),

@@ -173,7 +173,7 @@ class _RuleEditDialogState extends State<_RuleEditDialog> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _protocol.isEmpty ? 'any' : _protocol,
+                    initialValue: _protocol.isEmpty ? 'any' : _protocol,
                     decoration: const InputDecoration(
                       labelText: 'Protocol',
                       border: OutlineInputBorder(),
@@ -187,7 +187,7 @@ class _RuleEditDialogState extends State<_RuleEditDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _network.isEmpty ? 'any' : _network,
+                    initialValue: _network.isEmpty ? 'any' : _network,
                     decoration: const InputDecoration(
                       labelText: 'Network',
                       border: OutlineInputBorder(),

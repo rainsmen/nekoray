@@ -3,10 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/models/profile.dart';
-import '../../core/state/providers.dart';
-import '../../ui/components/dynamic_form.dart';
-import '../../ui/schema/protocol_schema.dart';
+import '../../../core/models/profile.dart';
+import '../../../core/state/providers.dart';
+import '../../components/dynamic_form.dart';
+import '../../schema/protocol_schema.dart';
 
 class ProfileEditDialog extends ConsumerStatefulWidget {
   final ProxyEntity? existing; // null = new
@@ -68,7 +68,7 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String>(
-                value: _type,
+                initialValue: _type,
                 decoration: const InputDecoration(
                   labelText: 'Protocol',
                   border: OutlineInputBorder(),
