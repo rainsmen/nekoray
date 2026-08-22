@@ -24,6 +24,7 @@ jobs:
         run: flutter pub get
       - name: Generate code (freezed/json)
         working-directory: nekoray_flutter
+        timeout-minutes: 5
         run: dart run build_runner build --delete-conflicting-outputs
       - name: Analyze
         working-directory: nekoray_flutter
@@ -45,6 +46,7 @@ jobs:
         run: flutter pub get
       - name: Generate code (freezed/json)
         working-directory: nekoray_flutter
+        timeout-minutes: 5
         run: dart run build_runner build --delete-conflicting-outputs
       - name: Test
         working-directory: nekoray_flutter
@@ -89,6 +91,7 @@ jobs:
 
       - name: Generate code (freezed/json)
         working-directory: nekoray_flutter
+        timeout-minutes: 8
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Enable platforms
