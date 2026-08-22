@@ -32,6 +32,9 @@ jobs:
           version: "25.1"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Dart SDK
+        uses: dart-lang/setup-dart@v1
+
       - name: Install protoc plugins
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.33.0
