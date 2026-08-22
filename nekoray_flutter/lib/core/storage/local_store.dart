@@ -51,7 +51,7 @@ class LocalStore {
     final id = profile['id'];
     if (id == null) throw ArgumentError('profile missing id');
     final f = File('${(await _profilesDir()).path}/$id.json');
-    f.writeAsStringSync(JsonEncoder.withIndent('  ').convert(profile));
+    f.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(profile));
   }
 
   static Future<void> deleteProfile(int id) async {
@@ -78,7 +78,7 @@ class LocalStore {
     final id = group['id'];
     if (id == null) throw ArgumentError('group missing id');
     final f = File('${(await _groupsDir()).path}/$id.json');
-    f.writeAsStringSync(JsonEncoder.withIndent('  ').convert(group));
+    f.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(group));
   }
 
   // --- Routing ----------------------------------------------------------
@@ -95,6 +95,6 @@ class LocalStore {
 
   static Future<void> saveRouting(String name, Map<String, dynamic> data) async {
     final f = File('${(await _root()).path}/routing_$name.json');
-    f.writeAsStringSync(JsonEncoder.withIndent('  ').convert(data));
+    f.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(data));
   }
 }

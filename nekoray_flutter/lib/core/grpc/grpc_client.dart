@@ -9,7 +9,7 @@ import 'package:grpc/grpc.dart';
 import 'generated/libcore.pbgrpc.dart';
 
 class GrpcClient {
-  GrpcClient._();
+  GrpcClient();
 
   ClientChannel? _channel;
   LibcoreServiceClient? _stub;
@@ -27,9 +27,9 @@ class GrpcClient {
     final channel = ClientChannel(
       host,
       port: port,
-      options: ChannelOptions(
-        credentials: const ChannelCredentials.insecure(),
-        idleTimeout: const Duration(minutes: 5),
+      options: const ChannelOptions(
+        credentials: ChannelCredentials.insecure(),
+        idleTimeout: Duration(minutes: 5),
       ),
     );
 

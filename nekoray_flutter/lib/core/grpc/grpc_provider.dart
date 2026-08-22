@@ -4,7 +4,7 @@ import 'grpc_client.dart';
 
 /// Singleton gRPC client provider.
 final grpcClientProvider = Provider<GrpcClient>((ref) {
-  final client = GrpcClient._();
+  final client = GrpcClient();
   ref.onDispose(client.disconnect);
   return client;
 });
