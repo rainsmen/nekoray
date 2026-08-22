@@ -1,13 +1,14 @@
-// Data models for proxy profiles, groups, and routing — mirroring the C++
-// NekoGui JsonStore / AbstractBean classes so that existing JSON config
-// files stay 100% compatible.
+// Data models for proxy profiles, groups, and routing.
+//
+// Mirrors the C++ NekoGui JsonStore / AbstractBean classes so that existing
+// JSON config files stay 100% compatible.
 //
 // See: fmt/AbstractBean.hpp, main/NekoGui_DataStore.hpp
+//
+// Note: uses plain Dart classes (no freezed codegen) to avoid version-solver
+// conflicts between freezed and json_serializable on Dart 3.9+.
 
-import 'package:freezed_annotation/freezed_annotation.dart';
-
-part 'profile.freezed.dart';
-part 'profile.g.dart';
+import 'dart:convert';
 
 /// Protocol type string constants (match C++ `V2rayOutboundType_*`).
 class ProxyType {
@@ -25,146 +26,414 @@ class ProxyType {
 }
 
 /// Common stream settings (transport + TLS), mirrors V2RayStreamSettings.hpp.
-@freezed
-class StreamSettings with _$StreamSettings {
-  const factory StreamSettings({
-    @Default('') String network,           // tcp, ws, grpc, h2, quic, httpupgrade
-    @Default('') String security,          // tls, reality, none
-    @Default(false) bool allowInsecure,
-    String? sni,
-    String? alpn,
-    String? fingerprint,                   // uTLS fingerprint
-    String? clientFingerprint,
-    String? publicKey,                     // reality
-    String? shortId,
-    String? spiderX,
-    String? serverName,                    // reality
-    // ws
-    String? wsPath,
-    String? wsHost,
-    String? wsEarlyDataHeaderName,
-    int? wsMaxEarlyData,
-    // grpc
-    String? grpcServiceName,
-    String? grpcAuthority,
-    // h2
-    List<String>? h2Host,
-    String? h2Path,
-    // quic
-    String? quicSecurity,
-    String? quicKey,
-    String? quicHeaderType,
-    // httpupgrade
-    String? httpupgradePath,
-    String? httpupgradeHost,
-    // tls cert
-    String? certificates,
-  }) = _StreamSettings;
+class StreamSettings {
+  String network;         // tcp, ws, grpc, h2, quic, httpupgrade
+  String security;        // tls, reality, none
+  bool allowInsecure;
+  String? sni;
+  String? alpn;
+  String? fingerprint;    // uTLS fingerprint
+  String? clientFingerprint;
+  String? publicKey;      // reality
+  String? shortId;
+  String? spiderX;
+  String? serverName;     // reality
+  // ws
+  String? wsPath;
+  String? wsHost;
+  String? wsEarlyDataHeaderName;
+  int? wsMaxEarlyData;
+  // grpc
+  String? grpcServiceName;
+  String? grpcAuthority;
+  // h2
+  List<String>? h2Host;
+  String? h2Path;
+  // quic
+  String? quicSecurity;
+  String? quicKey;
+  String? quicHeaderType;
+  // httpupgrade
+  String? httpupgradePath;
+  String? httpupgradeHost;
+  // tls cert
+  String? certificates;
 
-  factory StreamSettings.fromJson(Map<String, dynamic> json) =>
-      _$StreamSettingsFromJson(json);
+  StreamSettings({
+    this.network = '',
+    this.security = '',
+    this.allowInsecure = false,
+    this.sni,
+    this.alpn,
+    this.fingerprint,
+    this.clientFingerprint,
+    this.publicKey,
+    this.shortId,
+    this.spiderX,
+    this.serverName,
+    this.wsPath,
+    this.wsHost,
+    this.wsEarlyDataHeaderName,
+    this.wsMaxEarlyData,
+    this.grpcServiceName,
+    this.grpcAuthority,
+    this.h2Host,
+    this.h2Path,
+    this.quicSecurity,
+    this.quicKey,
+    this.quicHeaderType,
+    this.httpupgradePath,
+    this.httpupgradeHost,
+    this.certificates,
+  });
+
+  factory StreamSettings.fromJson(Map<String, dynamic> j) => StreamSettings(
+    network: j['network'] ?? '',
+    security: j['security'] ?? '',
+    allowInsecure: j['allow_insecure'] ?? false,
+    sni: j['sni'],
+    alpn: j['alpn'] is String ? j['alpn'] : (j['alpn'] is List ? (j['alpn'] as List).join(',') : null),
+    fingerprint: j['fingerprint'],
+    clientFingerprint: j['client_fingerprint'],
+    publicKey: j['public_key'],
+    shortId: j['short_id'],
+    spiderX: j['spider_x'],
+    serverName: j['server_name'],
+    wsPath: j['ws_path'],
+    wsHost: j['ws_host'],
+    wsEarlyDataHeaderName: j['ws_early_data_header_name'],
+    wsMaxEarlyData: j['ws_max_early_data'],
+    grpcServiceName: j['grpc_service_name'],
+    grpcAuthority: j['grpc_authority'],
+    h2Host: (j['h2_host'] as List?)?.cast<String>(),
+    h2Path: j['h2_path'],
+    quicSecurity: j['quic_security'],
+    quicKey: j['quic_key'],
+    quicHeaderType: j['quic_header_type'],
+    httpupgradePath: j['httpupgrade_path'],
+    httpupgradeHost: j['httpupgrade_host'],
+    certificates: j['certificates'],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'network': network,
+    'security': security,
+    'allow_insecure': allowInsecure,
+    if (sni != null) 'sni': sni,
+    if (alpn != null) 'alpn': alpn,
+    if (fingerprint != null) 'fingerprint': fingerprint,
+    if (clientFingerprint != null) 'client_fingerprint': clientFingerprint,
+    if (publicKey != null) 'public_key': publicKey,
+    if (shortId != null) 'short_id': shortId,
+    if (spiderX != null) 'spider_x': spiderX,
+    if (serverName != null) 'server_name': serverName,
+    if (wsPath != null) 'ws_path': wsPath,
+    if (wsHost != null) 'ws_host': wsHost,
+    if (wsEarlyDataHeaderName != null) 'ws_early_data_header_name': wsEarlyDataHeaderName,
+    if (wsMaxEarlyData != null) 'ws_max_early_data': wsMaxEarlyData,
+    if (grpcServiceName != null) 'grpc_service_name': grpcServiceName,
+    if (grpcAuthority != null) 'grpc_authority': grpcAuthority,
+    if (h2Host != null) 'h2_host': h2Host,
+    if (h2Path != null) 'h2_path': h2Path,
+    if (quicSecurity != null) 'quic_security': quicSecurity,
+    if (quicKey != null) 'quic_key': quicKey,
+    if (quicHeaderType != null) 'quic_header_type': quicHeaderType,
+    if (httpupgradePath != null) 'httpupgrade_path': httpupgradePath,
+    if (httpupgradeHost != null) 'httpupgrade_host': httpupgradeHost,
+    if (certificates != null) 'certificates': certificates,
+  };
 }
 
 /// Base bean — protocol-agnostic fields shared by all proxy types.
-@freezed
-class AbstractBean with _$AbstractBean {
-  const factory AbstractBean({
-    @JsonKey(name: 'server') required String serverAddress,
-    @JsonKey(name: 'server_port') required int serverPort,
-    StreamSettings? stream,
-    String? password,
-    String? uuid,
-    @Default(0) int alterId,
-    String? method,                       // SS cipher / HTTP auth method
-    String? sni,
-    String? obfs,
-    String? obfsParam,
-    String? path,
-    String? host,
-    @Default('') String username,
-    // VMess
-    String? id,
-    String? aid,
-    String? net,
-    String? tls,
-    // VLESS flow
-    String? flow,
-    // QUIC
-    @JsonKey(name: 'up_mbps') int? upMbps,
-    @JsonKey(name: 'down_mbps') int? downMbps,
-    @JsonKey(name: 'obfs_password') String? obfsPassword,
-    // TUIC
-    @JsonKey(name: 'uuid') String? tuicUuid,
-    @JsonKey(name: 'congestion_control') String? congestionControl,
-    @JsonKey(name: 'udp_relay_mode') String? udpRelayMode,
-    int? alpn,
-    // custom
-    String? customConfig,
-    String? customOutbound,
-  }) = _AbstractBean;
+class AbstractBean {
+  String serverAddress;
+  int serverPort;
+  StreamSettings? stream;
+  String? password;
+  String? uuid;
+  int alterId;
+  String? method;
+  String? sni;
+  String? obfs;
+  String? obfsParam;
+  String? path;
+  String? host;
+  String username;
+  String? id;             // VMess id (= uuid)
+  String? aid;            // VMess alterId (string form)
+  String? net;           // VMess network
+  String? tls;           // VMess tls
+  String? flow;          // VLESS flow
+  int? upMbps;
+  int? downMbps;
+  String? obfsPassword;
+  String? congestionControl;
+  String? udpRelayMode;
+  String? customConfig;
+  String? customOutbound;
 
-  factory AbstractBean.fromJson(Map<String, dynamic> json) =>
-      _$AbstractBeanFromJson(json);
+  AbstractBean({
+    required this.serverAddress,
+    required this.serverPort,
+    this.stream,
+    this.password,
+    this.uuid,
+    this.alterId = 0,
+    this.method,
+    this.sni,
+    this.obfs,
+    this.obfsParam,
+    this.path,
+    this.host,
+    this.username = '',
+    this.id,
+    this.aid,
+    this.net,
+    this.tls,
+    this.flow,
+    this.upMbps,
+    this.downMbps,
+    this.obfsPassword,
+    this.congestionControl,
+    this.udpRelayMode,
+    this.customConfig,
+    this.customOutbound,
+  });
+
+  factory AbstractBean.fromJson(Map<String, dynamic> j) => AbstractBean(
+    serverAddress: j['server'] ?? '',
+    serverPort: j['server_port'] ?? 0,
+    stream: j['stream'] is Map<String, dynamic>
+        ? StreamSettings.fromJson(j['stream'])
+        : null,
+    password: j['password'],
+    uuid: j['uuid'],
+    alterId: j['alter_id'] ?? 0,
+    method: j['method'],
+    sni: j['sni'],
+    obfs: j['obfs'],
+    obfsParam: j['obfs_param'],
+    path: j['path'],
+    host: j['host'],
+    username: j['username'] ?? '',
+    id: j['id'],
+    aid: j['aid'],
+    net: j['net'],
+    tls: j['tls'],
+    flow: j['flow'],
+    upMbps: j['up_mbps'],
+    downMbps: j['down_mbps'],
+    obfsPassword: j['obfs_password'],
+    congestionControl: j['congestion_control'],
+    udpRelayMode: j['udp_relay_mode'],
+    customConfig: j['custom_config'],
+    customOutbound: j['custom_outbound'],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'server': serverAddress,
+    'server_port': serverPort,
+    if (stream != null) 'stream': stream!.toJson(),
+    if (password != null) 'password': password,
+    if (uuid != null) 'uuid': uuid,
+    'alter_id': alterId,
+    if (method != null) 'method': method,
+    if (sni != null) 'sni': sni,
+    if (obfs != null) 'obfs': obfs,
+    if (obfsParam != null) 'obfs_param': obfsParam,
+    if (path != null) 'path': path,
+    if (host != null) 'host': host,
+    'username': username,
+    if (id != null) 'id': id,
+    if (aid != null) 'aid': aid,
+    if (net != null) 'net': net,
+    if (tls != null) 'tls': tls,
+    if (flow != null) 'flow': flow,
+    if (upMbps != null) 'up_mbps': upMbps,
+    if (downMbps != null) 'down_mbps': downMbps,
+    if (obfsPassword != null) 'obfs_password': obfsPassword,
+    if (congestionControl != null) 'congestion_control': congestionControl,
+    if (udpRelayMode != null) 'udp_relay_mode': udpRelayMode,
+    if (customConfig != null) 'custom_config': customConfig,
+    if (customOutbound != null) 'custom_outbound': customOutbound,
+  };
 }
 
 /// A proxy profile — mirrors `NekoGui::ProxyEntity`.
-@freezed
-class ProxyEntity with _$ProxyEntity {
-  const factory ProxyEntity({
-    required int id,
-    @Default(0) int gid,
-    required String type,
-    @Default('') String name,
-    required AbstractBean bean,
-    StreamSettings? stream,
-    @Default(0) int latency,
-    @Default(0) int trafficUp,
-    @Default(0) int trafficDown,
-    @JsonKey(name: 'max_link') int? maxLink,
-    @Default(false) bool dyslexia,
-    String? customCore,
-    @JsonKey(name: 'location') String? location,
-  }) = _ProxyEntity;
+class ProxyEntity {
+  final int id;
+  int gid;
+  String type;
+  String name;
+  AbstractBean bean;
+  StreamSettings? stream;
+  int latency;
+  int trafficUp;
+  int trafficDown;
+  int? maxLink;
+  bool dyslexia;
+  String? customCore;
+  String? location;
 
-  factory ProxyEntity.fromJson(Map<String, dynamic> json) =>
-      _$ProxyEntityFromJson(json);
+  ProxyEntity({
+    required this.id,
+    this.gid = 0,
+    required this.type,
+    this.name = '',
+    required this.bean,
+    this.stream,
+    this.latency = 0,
+    this.trafficUp = 0,
+    this.trafficDown = 0,
+    this.maxLink,
+    this.dyslexia = false,
+    this.customCore,
+    this.location,
+  });
+
+  factory ProxyEntity.fromJson(Map<String, dynamic> j) => ProxyEntity(
+    id: j['id'] ?? 0,
+    gid: j['gid'] ?? 0,
+    type: j['type'] ?? '',
+    name: j['name'] ?? '',
+    bean: AbstractBean.fromJson(j),
+    stream: j['stream'] is Map<String, dynamic>
+        ? StreamSettings.fromJson(j['stream'])
+        : null,
+    latency: j['latency'] ?? 0,
+    trafficUp: j['traffic_up'] ?? 0,
+    trafficDown: j['traffic_down'] ?? 0,
+    maxLink: j['max_link'],
+    dyslexia: j['dyslexia'] ?? false,
+    customCore: j['custom_core'],
+    location: j['location'],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'gid': gid,
+    'type': type,
+    'name': name,
+    ...bean.toJson(),
+    if (stream != null) 'stream': stream!.toJson(),
+    'latency': latency,
+    'traffic_up': trafficUp,
+    'traffic_down': trafficDown,
+    if (maxLink != null) 'max_link': maxLink,
+    'dyslexia': dyslexia,
+    if (customCore != null) 'custom_core': customCore,
+    if (location != null) 'location': location,
+  };
+
+  String get address => '${bean.serverAddress}:${bean.serverPort}';
+  String get displayType => type;
 }
 
 /// A group of profiles — mirrors `NekoGui::Group`.
-@freezed
-class ProfileGroup with _$ProfileGroup {
-  const factory ProfileGroup({
-    required int id,
-    @Default(0) int archive,
-    @Default('') String name,
-    @Default([]) List<int> profiles,
-    @Default('') String url,
-    @Default(0) int cycleTime,
-    @Default(0) int subLastUpdate,
-    @Default(false) bool subAutoUpdate,
-    @Default([]) List<int> subSupport,
-  }) = _ProfileGroup;
+class ProfileGroup {
+  final int id;
+  int archive;
+  String name;
+  List<int> profiles;
+  String url;
+  int cycleTime;
+  int subLastUpdate;
+  bool subAutoUpdate;
+  List<int> subSupport;
 
-  factory ProfileGroup.fromJson(Map<String, dynamic> json) =>
-      _$ProfileGroupFromJson(json);
+  ProfileGroup({
+    required this.id,
+    this.archive = 0,
+    this.name = '',
+    this.profiles = const [],
+    this.url = '',
+    this.cycleTime = 0,
+    this.subLastUpdate = 0,
+    this.subAutoUpdate = false,
+    this.subSupport = const [],
+  });
+
+  factory ProfileGroup.fromJson(Map<String, dynamic> j) => ProfileGroup(
+    id: j['id'] ?? 0,
+    archive: j['archive'] ?? 0,
+    name: j['name'] ?? '',
+    profiles: (j['profiles'] as List?)?.cast<int>() ?? [],
+    url: j['url'] ?? '',
+    cycleTime: j['cycle_time'] ?? 0,
+    subLastUpdate: j['sub_last_update'] ?? 0,
+    subAutoUpdate: j['sub_auto_update'] ?? false,
+    subSupport: (j['sub_support'] as List?)?.cast<int>() ?? [],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'archive': archive,
+    'name': name,
+    'profiles': profiles,
+    'url': url,
+    'cycle_time': cycleTime,
+    'sub_last_update': subLastUpdate,
+    'sub_auto_update': subAutoUpdate,
+    'sub_support': subSupport,
+  };
 }
 
 /// Outbound / DNS / route rule targets.
-@freezed
-class RoutingRule with _$RoutingRule {
-  const factory RoutingRule({
-    @Default([]) List<String> domains,
-    @Default([]) List<String> ip,
-    @Default([]) List<String> port,
-    @Default([]) List<String> source,
-    @Default([]) List<String> sourcePort,
-    @Default('') String outbound,
-    @Default('') String protocol,
-    @Default('') String inbound,
-    @Default('') String network,
-    String? domainMatcher,
-  }) = _RoutingRule;
+class RoutingRule {
+  List<String> domains;
+  List<String> ip;
+  List<String> port;
+  List<String> source;
+  List<String> sourcePort;
+  String outbound;
+  String protocol;
+  String inbound;
+  String network;
+  String? domainMatcher;
 
-  factory RoutingRule.fromJson(Map<String, dynamic> json) =>
-      _$RoutingRuleFromJson(json);
+  RoutingRule({
+    this.domains = const [],
+    this.ip = const [],
+    this.port = const [],
+    this.source = const [],
+    this.sourcePort = const [],
+    this.outbound = '',
+    this.protocol = '',
+    this.inbound = '',
+    this.network = '',
+    this.domainMatcher,
+  });
+
+  factory RoutingRule.fromJson(Map<String, dynamic> j) => RoutingRule(
+    domains: (j['domains'] as List?)?.cast<String>() ?? [],
+    ip: (j['ip'] as List?)?.cast<String>() ?? [],
+    port: (j['port'] as List?)?.cast<String>() ?? [],
+    source: (j['source'] as List?)?.cast<String>() ?? [],
+    sourcePort: (j['source_port'] as List?)?.cast<String>() ?? [],
+    outbound: j['outbound'] ?? '',
+    protocol: j['protocol'] ?? '',
+    inbound: j['inbound'] ?? '',
+    network: j['network'] ?? '',
+    domainMatcher: j['domain_matcher'],
+  );
+
+  Map<String, dynamic> toJson() => {
+    'domains': domains,
+    'ip': ip,
+    'port': port,
+    'source': source,
+    'source_port': sourcePort,
+    'outbound': outbound,
+    'protocol': protocol,
+    'inbound': inbound,
+    'network': network,
+    if (domainMatcher != null) 'domain_matcher': domainMatcher,
+  };
 }
+
+/// Convenience helpers.
+String encodeJson(Map<String, dynamic> json) =>
+    const JsonEncoder.withIndent('  ').convert(json);
+
+Map<String, dynamic> decodeJson(String src) =>
+    jsonDecode(src) as Map<String, dynamic>;
