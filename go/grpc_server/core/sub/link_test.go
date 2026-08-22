@@ -164,7 +164,7 @@ proxies:
     cipher: auto
     network: ws
     tls: true
-   servername: example.com
+    servername: example.com
     ws-opts:
       path: /ws
       headers:
