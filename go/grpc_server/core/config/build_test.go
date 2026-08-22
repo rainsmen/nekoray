@@ -109,10 +109,12 @@ func TestBuildShadowsocksConfig(t *testing.T) {
 	}
 
 	configStr := prettyJSON(t, result.CoreConfig)
-	if !strings.Contains(configStr, `"type":"shadowsocks"`) {
+	// normalize spaces for substring matching
+	configFlat := strings.ReplaceAll(configStr, " ", "")
+	if !strings.Contains(configFlat, `"type":"shadowsocks"`) {
 		t.Errorf("config missing shadowsocks outbound:\n%s", configStr)
 	}
-	if !strings.Contains(configStr, `"method":"aes-256-gcm"`) {
+	if !strings.Contains(configFlat, `"method":"aes-256-gcm"`) {
 		t.Errorf("config missing method:\n%s", configStr)
 	}
 }
@@ -145,10 +147,11 @@ func TestBuildTrojanConfig(t *testing.T) {
 	}
 
 	configStr := prettyJSON(t, result.CoreConfig)
-	if !strings.Contains(configStr, `"type":"trojan"`) {
+	configFlat := strings.ReplaceAll(configStr, " ", "")
+	if !strings.Contains(configFlat, `"type":"trojan"`) {
 		t.Errorf("config missing trojan outbound:\n%s", configStr)
 	}
-	if !strings.Contains(configStr, `"server_name":"example.com"`) {
+	if !strings.Contains(configFlat, `"server_name":"example.com"`) {
 		t.Errorf("config missing tls sni:\n%s", configStr)
 	}
 }
