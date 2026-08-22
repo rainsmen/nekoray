@@ -1,0 +1,63 @@
+name: Build Go Core
+
+on:
+  push:
+    branches: [main, dev, feature/core-v2]
+    paths:
+      - 'go/**'
+      - 'libs/get_source_env.sh'
+      - 'libs/get_source.sh'
+      - 'libs/build_go.sh'
+      - 'libs/env_deploy.sh'
+      - 'nekoray_version.txt'
+      - '.github/workflows/build-go-core.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'go/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+          - goos: linux
+            goarch: amd64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+      fail-fast: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: go/cmd/nekobox_core/go.sum
+
+      - name: Get sources (sing-box etc.)
+        run: ./libs/get_source.sh
+
+      - name: Build nekobox_core
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: ./libs/build_go.sh
+
+      - name: Tar files
+        run: tar czvf artifacts.tgz ./deployment
+
+      - name: Uploading Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nekobox_core-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: artifacts.tgz
+          retention-days: 14

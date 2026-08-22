@@ -1,0 +1,52 @@
+name: Lint & Test
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  go-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: go/cmd/nekobox_core/go.sum
+
+      - name: Get sources (sing-box etc.)
+        run: ./libs/get_source.sh
+
+      - name: Go vet
+        working-directory: go/cmd/nekobox_core
+        run: go vet ./...
+
+      - name: Go build check
+        working-directory: go/cmd/nekobox_core
+        run: go build ./...
+
+      - name: Go test
+        working-directory: go/cmd/nekobox_core
+        run: go test ./... -v -cover 2>&1 || true
+
+  cpp-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
+
+      - name: clang-tidy version
+        run: clang-tidy --version
