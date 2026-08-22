@@ -1,12 +1,13 @@
 name: Generate Proto
 
 # Regenerates Go gRPC stubs from libcore.proto and commits the result.
+# Also generates Dart gRPC stubs for the Flutter client.
 # Run manually after editing go/grpc_server/gen/libcore.proto.
 
 on:
   workflow_dispatch:
   push:
-    branches: [feature/core-v2]
+    branches: [dev, feature/flutter-grpc]
     paths:
       - 'go/grpc_server/gen/libcore.proto'
 
@@ -31,6 +32,9 @@ jobs:
           version: "25.1"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Dart SDK
+        uses: dart-lang/setup-dart@v1
+
       - name: Install protoc plugins
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.33.0
@@ -42,14 +46,23 @@ jobs:
           protoc -I . --go_out=. --go_opt paths=source_relative \
             --go-grpc_out=. --go-grpc_opt paths=source_relative libcore.proto
 
+      - name: Generate Dart stubs
+        working-directory: go/grpc_server/gen
+        run: |
+          dart pub global activate protoc_plugin ^21.1.2
+          export PATH=$PATH:$(dart pub global bin path)
+          mkdir -p ../../../nekoray_flutter/lib/core/grpc/generated
+          protoc -I . --dart_out=grpc:../../../nekoray_flutter/lib/core/grpc/generated libcore.proto
+
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add go/grpc_server/gen/*.go
+          git add nekoray_flutter/lib/core/grpc/generated/
           if git diff --cached --quiet; then
             echo "no proto changes to commit"
           else
-            git commit -m "chore(proto): regenerate gRPC stubs from libcore.proto [skip ci]"
+            git commit -m "chore(proto): regenerate Go + Dart gRPC stubs [skip ci]"
             git push
           fi
