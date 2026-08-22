@@ -6,9 +6,10 @@ name: Sync go.sum
 
 on:
   push:
-    branches: [feature/core-v2]
+    branches: [feature/core-v2, feature/core-subscription]
     paths:
       - 'go/cmd/nekobox_core/go.mod'
+      - 'go/grpc_server/go.mod'
       - 'libs/get_source_env.sh'
       - 'libs/get_source.sh'
   workflow_dispatch:
@@ -35,18 +36,23 @@ jobs:
       - name: Get sources (libneko / sing-quic for replace directives)
         run: ./libs/get_source.sh
 
-      - name: Run go mod tidy
+      - name: Run go mod tidy (nekobox_core)
         working-directory: go/cmd/nekobox_core
         run: |
           go mod tidy
           git diff --stat go.sum || true
 
+      - name: Run go mod tidy (grpc_server)
+        working-directory: go/grpc_server
+        run: |
+          go mod tidy
+          git diff --stat go.sum || true
+
       - name: Commit changes
-        working-directory: go/cmd/nekobox_core
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add go.sum go.mod
+          git add go/cmd/nekobox_core/go.sum go/cmd/nekobox_core/go.mod go/grpc_server/go.sum go/grpc_server/go.mod
           if git diff --cached --quiet; then
             echo "no changes to commit"
           else
