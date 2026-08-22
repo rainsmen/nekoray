@@ -8,8 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/models/profile.dart';
-import '../../core/state/providers.dart';
+import '../../../core/models/profile.dart';
+import '../../../core/state/providers.dart';
 
 /// Routing config (loaded from routing_default.json).
 final routingConfigProvider =
