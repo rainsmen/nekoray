@@ -1,0 +1,57 @@
+name: nekoray
+description: A modern cross-platform proxy client (sing-box backend).
+publish_to: "none"
+version: 5.0.0-beta1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # gRPC
+  grpc: ^4.0.1
+  protobuf: ^3.1.0
+
+  # Serialization
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # Networking
+  dio: ^5.7.0
+
+  # Storage
+  path_provider: ^2.1.4
+
+  # UI
+  fl_chart: ^0.69.2
+  tray_manager: ^0.2.3
+  window_manager: ^0.4.3
+
+  # QR
+  qr_flutter: ^4.1.0
+
+  # Utils
+  collection: ^1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  integration_test:
+    sdk: flutter
+
+  build_runner: ^2.4.13
+  freezed: ^2.5.7
+  json_serializable: ^6.8.0
+  protoc_plugin: ^21.1.2
+
+flutter:
+  uses-material-design: true
+  generate: true

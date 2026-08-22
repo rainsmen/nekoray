@@ -1,0 +1,14 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    avoid_print: true
+
+analyzer:
+  exclude:
+    - "lib/core/grpc/generated/**"
+    - "lib/**/*.g.dart"
+    - "lib/**/*.freezed.dart"
+  errors:
+    # Treat analysis errors as errors (CI gate), but allow some common ones.
+    missing_required_param: error
