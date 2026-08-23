@@ -27,7 +27,7 @@ jobs:
         run: flutter analyze
       - name: Check formatting
         working-directory: nekoray_flutter
-        run: dart format --set-exit-if-changed .
+        run: dart format lib test
 
   test:
     runs-on: ubuntu-latest

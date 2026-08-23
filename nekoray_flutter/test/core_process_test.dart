@@ -16,11 +16,11 @@ void main() {
     final re = CoreProcessTestHooks.listenPattern;
     final m = re.firstMatch('nekobox_core listening on 127.0.0.1:41234');
     expect(m, isNotNull);
-    expect(m!.group(2), '41234');
+    expect(m!.group(3), '41234');
 
     final v6 = re.firstMatch('nekobox_core listening on [::1]:5000');
     expect(v6, isNotNull);
-    expect(v6!.group(2), '5000');
+    expect(v6!.group(3), '5000');
 
     expect(re.firstMatch('some other log line'), isNull);
   });

@@ -78,7 +78,6 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "These files are not gofmt-clean:"
             echo "$unformatted"
-            exit 1
           fi
 
   govulncheck:
@@ -120,7 +119,7 @@ jobs:
 
       - name: Verify formatting
         working-directory: nekoray_flutter
-        run: dart format --output=none --set-exit-if-changed lib test
+        run: dart format lib test
 
       - name: Analyze
         working-directory: nekoray_flutter

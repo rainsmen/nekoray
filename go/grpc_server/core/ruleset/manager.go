@@ -191,6 +191,9 @@ func (m *Manager) Register(tag, format, url string) error {
 	if !validTag.MatchString(tag) {
 		return fmt.Errorf("invalid rule_set tag %q", tag)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var previous *Info
 	if current, ok := m.items[tag]; ok {
 		cp := *current
@@ -313,8 +316,6 @@ func (m *Manager) Download(ctx context.Context, tag, format, url string) (string
 		return "", err
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	var previous *Info
 	if current, ok := m.items[tag]; ok {
 		cp := *current

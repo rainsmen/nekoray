@@ -22,6 +22,14 @@ const maxEntrySize = 256 << 20
 const maxTotalSize = 1 << 30
 
 func Updater() {
+	if err := runUpdater(); err != nil {
+		MessageBoxPlain("NekoGui Updater", "Update failed. Please close running instances and try again.\n\n"+err.Error())
+		log.Println("updater error:", err)
+		os.Exit(1)
+	}
+}
+
+func runUpdater() error {
 	// Find the update package without touching the existing installation. The
 	// package is extracted into a private staging directory first; cleanup and
 	// replacement only begin after extraction and payload validation succeed.
@@ -37,21 +45,20 @@ func Updater() {
 	} else if Exist("./nekoray.tar.gz") {
 		updatePackagePath = "./nekoray.tar.gz"
 	} else {
-		log.Fatalln("no update")
+		return fmt.Errorf("no update package found")
 	}
 	log.Println("updating from", updatePackagePath)
 
 	stagingDir, err := extractUpdatePackage(updatePackagePath)
 	if err != nil {
-		MessageBoxPlain("NekoGui Updater", "Update package is invalid or unsafe.\n\n"+err.Error())
-		log.Fatalln(err.Error())
+		return fmt.Errorf("update package is invalid or unsafe: %w", err)
 	}
 	// Keep the staging directory alive through Mv below. It is removed only
 	// after replacement succeeds (or on an early validation failure).
 	stagingOwned := true
 	defer func() {
 		if stagingOwned {
-			os.RemoveAll(stagingDir)
+			_ = os.RemoveAll(stagingDir)
 		}
 	}()
 
@@ -59,9 +66,7 @@ func Updater() {
 	// Mv below expects. This check must precede any destructive cleanup.
 	payload := filepath.Join(stagingDir, "nekoray")
 	if !Exist(payload) {
-		err = fmt.Errorf("update package has no nekoray payload")
-		MessageBoxPlain("NekoGui Updater", "Update package is invalid or unsafe.\n\n"+err.Error())
-		log.Fatalln(err.Error())
+		return fmt.Errorf("update package has no nekoray payload")
 	}
 
 	// Replace the installation transactionally. Existing top-level entries are
@@ -70,16 +75,16 @@ func Updater() {
 	// removed and the backup is restored, so a partial update cannot strand the
 	// application in a mixed old/new state.
 	if err := replacePayload(payload, ".", runtime.GOOS == "linux"); err != nil {
-		MessageBoxPlain("NekoGui Updater", "Update failed. Please close the running instance and run the updater again.\n\n"+err.Error())
-		log.Fatalln(err.Error())
+		return fmt.Errorf("update payload replacement failed: %w", err)
 	}
 	stagingOwned = false
-	os.RemoveAll(stagingDir)
+	_ = os.RemoveAll(stagingDir)
 
-	os.Remove("./nekoray-update.zip")
-	os.Remove("./nekoray-update.tar.gz")
-	os.Remove("./nekoray.zip")
-	os.Remove("./nekoray.tar.gz")
+	_ = os.Remove("./nekoray-update.zip")
+	_ = os.Remove("./nekoray-update.tar.gz")
+	_ = os.Remove("./nekoray.zip")
+	_ = os.Remove("./nekoray.tar.gz")
+	return nil
 }
 
 // extractUpdatePackage validates and extracts an update into a newly-created

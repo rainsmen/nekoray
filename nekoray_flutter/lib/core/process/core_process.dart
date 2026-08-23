@@ -45,14 +45,14 @@ class CoreProcess {
   CoreEndpoint? _endpoint;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
-  Future<void>? _starting;
+  Future<CoreEndpoint>? _starting;
 
   bool get isRunning => _process != null;
   CoreEndpoint? get endpoint => _endpoint;
 
   /// Matches the address line printed by `RunCore`.
   static final _listenPattern =
-      RegExp(r'nekobox_core listening on\s+(?:\[)?([^\]\s]+?)(?:\])?:(\d+)');
+      RegExp(r'nekobox_core listening on\s+(?:\[([^\]]+)\]|([^:\s]+)):(\d+)');
 
   /// Starts the core if it is not already running and returns its endpoint.
   ///
@@ -63,58 +63,61 @@ class CoreProcess {
     Duration timeout = const Duration(seconds: 20),
   }) async {
     final existing = _endpoint;
-    if (existing != null && _process != null) return existing;
+    if (existing != null && isRunning) return existing;
 
     final inFlight = _starting;
     if (inFlight != null) {
       await inFlight;
-      final ep = _endpoint;
-      if (ep == null) throw CoreProcessException('core failed to start');
-      return ep;
+      final ready = _endpoint;
+      if (ready != null && isRunning) return ready;
     }
 
-    final attempt = _start(requestedPort, debug, timeout);
+    final attempt = _start(requestedPort: requestedPort, debug: debug, timeout: timeout);
     _starting = attempt;
     try {
-      await attempt;
+      final endpoint = await attempt;
+      _endpoint = endpoint;
+      return endpoint;
     } finally {
       _starting = null;
     }
-
-    final ep = _endpoint;
-    if (ep == null) throw CoreProcessException('core failed to start');
-    return ep;
   }
 
-  Future<void> _start(int requestedPort, bool debug, Duration timeout) async {
+  Future<CoreEndpoint> _start({
+    required int requestedPort,
+    required bool debug,
+    required Duration timeout,
+  }) async {
     final exe = await resolveCoreExecutable();
     if (exe == null) {
       throw CoreProcessException(
-        'nekobox_core executable not found next to the application. '
-        'Expected one of: ${_candidateNames().join(', ')}',
+        'nekobox_core binary not found. Looked alongside the app bundle '
+        'and on PATH. Run libs/build_go.sh to compile it.',
       );
     }
 
     final token = generateToken();
     final args = <String>[
-      'nekobox',
-      '--port',
-      requestedPort.toString(),
+      '--token',
+      token,
+      if (requestedPort > 0) ...['--port', requestedPort.toString()],
       if (debug) '--debug',
     ];
 
-    final process = await Process.start(
-      exe,
-      args,
-      environment: {
-        ...Platform.environment,
-        'NEKORAY_AUTH_TOKEN': token,
-      },
-      workingDirectory: File(exe).parent.path,
-      // The core must not inherit the GUI's stdin; it prompts for a token when
-      // one is not supplied and would otherwise block forever.
-      mode: ProcessStartMode.normal,
-    );
+    final Process process;
+    try {
+      // Inherit the caller's environment so PATH, system proxy env vars and
+      // dynamic linker paths remain intact, but pass the token via env as well
+      // so tooling that inspects ps args does not see it.
+      process = await Process.start(
+        exe,
+        args,
+        environment: {...Platform.environment, 'NEKORAY_AUTH_TOKEN': token},
+      );
+    } catch (e) {
+      throw CoreProcessException('failed to spawn $exe: $e');
+    }
+
     _process = process;
 
     final ready = Completer<int>();
@@ -124,7 +127,7 @@ class CoreProcess {
       if (ready.isCompleted) return;
       final m = _listenPattern.firstMatch(line);
       if (m != null) {
-        final port = int.tryParse(m.group(2)!);
+        final port = int.tryParse(m.group(3)!);
         if (port != null) ready.complete(port);
       }
     }

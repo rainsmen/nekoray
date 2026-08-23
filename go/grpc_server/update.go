@@ -399,6 +399,9 @@ func clientWithUpdateRedirectPolicy(client *http.Client) *http.Client {
 	copy := *client
 	previous := client.CheckRedirect
 	copy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
 		if err := validateUpdateURL(req.URL.String()); err != nil {
 			return err
 		}

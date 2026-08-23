@@ -17,7 +17,7 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(i18nProvider);
-    final t = I18n.t;
+    const t = I18n.t;
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     final connection = ref.watch(coreConnectionProvider);
