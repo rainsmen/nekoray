@@ -79,3 +79,33 @@ func TestDefaultCacheDirIsAbsolute(t *testing.T) {
 	}
 	_ = os.TempDir()
 }
+
+func TestRegisterPersistsAcrossManagers(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	if err := m.Register("geosite-cn", "binary", "https://example.com/geosite.mrs"); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "index.json")); err != nil {
+		t.Fatalf("index was not persisted: %v", err)
+	}
+	reloaded := NewManager(root)
+	items := reloaded.List()
+	if len(items) != 1 || items[0].Tag != "geosite-cn" || items[0].URL == "" {
+		t.Fatalf("reloaded items = %#v", items)
+	}
+}
+
+func TestRegisterRollbackOnIndexWriteFailure(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(root, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(root)
+	if err := m.Register("tag", "binary", "https://example.com/x"); err == nil {
+		t.Fatal("Register unexpectedly succeeded with an unusable cache directory")
+	}
+	if len(m.List()) != 0 {
+		t.Fatalf("failed registration was retained: %#v", m.List())
+	}
+}

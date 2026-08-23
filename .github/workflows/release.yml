@@ -61,8 +61,14 @@ jobs:
             target: windows
           - platform: ubuntu-latest
             target: linux
+          - platform: macos-13
+            target: macos
+            package_target: macos
+            core_artifact: core-darwin-amd64
           - platform: macos-latest
             target: macos
+            package_target: macos-arm64
+            core_artifact: core-darwin-arm64
       fail-fast: false
     runs-on: ${{ matrix.platform }}
     needs: build-go-core
@@ -98,16 +104,16 @@ jobs:
       - name: Download Go core artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.target == 'windows' && 'core-windows-amd64' || matrix.target == 'linux' && 'core-linux-amd64' || 'core-darwin-amd64' }}
+          name: ${{ matrix.core_artifact || (matrix.target == 'windows' && 'core-windows-amd64' || matrix.target == 'linux' && 'core-linux-amd64' || 'core-darwin-amd64') }}
           path: deployment/
 
       - name: Package release
         shell: bash
-        run: ./libs/package_flutter_release.sh ${{ matrix.target }}
+        run: ./libs/package_flutter_release.sh ${{ matrix.package_target || matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nekoray-release-${{ matrix.target }}
+          name: nekoray-release-${{ matrix.package_target || matrix.target }}
           path: deployment/nekoray-*
           # The packaging script now fails loudly on a missing core binary, but
           # this is the backstop: an empty artifact must never reach a release.
@@ -235,7 +241,8 @@ jobs:
           |---|---|
           | Windows | `nekoray-*-windows64.zip` |
           | Linux | `nekoray-*-linux64.tar.gz` |
-          | macOS | `nekoray-*-macos.zip` |
+          | macOS Intel | `nekoray-*-macos.zip` |
+          | macOS Apple Silicon | `nekoray-*-macos-arm64.zip` |
           | Android arm64 | `nekoray-*-android-arm64-v8a.apk` |
           | Android armv7 | `nekoray-*-android-armeabi-v7a.apk` |
           | Android x86_64 | `nekoray-*-android-x86_64.apk` |

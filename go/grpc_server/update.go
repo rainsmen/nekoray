@@ -13,25 +13,40 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/metadata"
 )
 
-// updateState guards the URL handed from a Check call to a Download call.
-// Both are RPC entry points and may be called concurrently.
-var updateState struct {
-	sync.Mutex
+// UpdateSessionMetadataKey is the gRPC metadata key used to bind a Check
+// request to its subsequent Download request. The client must generate a fresh
+// opaque value for each check/download flow and send it on both calls.
+const UpdateSessionMetadataKey = "nekoray-update-session"
+
+// updateSession is the release asset selected by one Check call. Keeping this
+// state per session prevents a concurrent check in another UI/request from
+// silently changing what a Download call installs.
+type updateSession struct {
 	downloadURL string
 	assetName   string
 	// checksumURL points at the release's checksums asset, when it publishes one.
 	checksumURL string
+	createdAt   time.Time
 }
+
+var updateState struct {
+	sync.Mutex
+	sessions map[string]updateSession
+}
+
+const maxUpdateSessions = 32
+const updateSessionTTL = 15 * time.Minute
 
 // CurrentVersion is the version string used for update checking.
 // It is set by the core on startup via SetVersion.
-var CurrentVersion = "5.0.0"
+var CurrentVersion = "5.0.0-beta.4"
 
 // maxUpdateBytes caps a downloaded update package (512 MiB).
 const maxUpdateBytes = 512 << 20
@@ -40,9 +55,9 @@ const maxUpdateBytes = 512 << 20
 // GitHub serves release assets from objects.githubusercontent.com after a
 // redirect, so both are accepted; anything else is refused.
 var allowedUpdateHosts = map[string]bool{
-	"github.com":                   true,
-	"api.github.com":               true,
-	"objects.githubusercontent.com": true,
+	"github.com":                           true,
+	"api.github.com":                       true,
+	"objects.githubusercontent.com":        true,
 	"release-assets.githubusercontent.com": true,
 }
 
@@ -82,22 +97,73 @@ type ghRelease struct {
 
 func (s *BaseServer) Update(ctx context.Context, in *gen.UpdateReq) (*gen.UpdateResp, error) {
 	ret := &gen.UpdateResp{}
-	client := proxyHttpClient()
+	client := clientWithUpdateRedirectPolicy(proxyHttpClient())
+	sessionID := updateSessionID(ctx)
 
-	if in.Action == gen.UpdateAction_Check {
-		if err := checkUpdate(ctx, client, in.CheckPreRelease, ret); err != nil {
+	switch in.Action {
+	case gen.UpdateAction_Check:
+		if sessionID == "" {
+			ret.Error = "missing update session ID"
+			return ret, nil
+		}
+		if err := checkUpdate(ctx, client, in.CheckPreRelease, ret, sessionID); err != nil {
 			ret.Error = err.Error()
 		}
 		return ret, nil
+	case gen.UpdateAction_Download:
+		// handled below
+	default:
+		ret.Error = fmt.Sprintf("unsupported update action %d", in.Action)
+		return ret, nil
 	}
 
-	if err := downloadUpdate(ctx, client, ret); err != nil {
+	if sessionID == "" {
+		ret.Error = "missing update session ID"
+		return ret, nil
+	}
+	if err := downloadUpdate(ctx, client, ret, sessionID); err != nil {
 		ret.Error = err.Error()
 	}
 	return ret, nil
 }
 
-func checkUpdate(ctx context.Context, client *http.Client, allowPreRelease bool, ret *gen.UpdateResp) error {
+// updateSessionID extracts the opaque per-flow identifier from incoming gRPC
+// metadata. It intentionally does not use the auth token or peer address:
+// those are shared by every request in a process and cannot bind Check to
+// Download.
+func updateSessionID(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(UpdateSessionMetadataKey)
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(values[0])
+}
+
+func firstUpdateSessionID(sessionIDs []string) string {
+	if len(sessionIDs) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(sessionIDs[0])
+}
+
+func discardUpdateSession(sessionID string) {
+	updateState.Lock()
+	delete(updateState.sessions, sessionID)
+	updateState.Unlock()
+}
+
+func checkUpdate(ctx context.Context, client *http.Client, allowPreRelease bool, ret *gen.UpdateResp, sessionIDs ...string) error {
+	sessionID := firstUpdateSessionID(sessionIDs)
+	if sessionID == "" {
+		return fmt.Errorf("missing update session ID")
+	}
+	// A retry with the same session must not be able to consume a result from
+	// an earlier check if this request fails or reports that no update exists.
+	discardUpdateSession(sessionID)
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
@@ -150,9 +216,34 @@ func checkUpdate(ctx context.Context, client *http.Client, allowPreRelease bool,
 		}
 
 		updateState.Lock()
-		updateState.downloadURL = asset.BrowserDownloadUrl
-		updateState.assetName = asset.Name
-		updateState.checksumURL = findChecksumAsset(release.Assets)
+		if updateState.sessions == nil {
+			updateState.sessions = make(map[string]updateSession)
+		}
+		now := time.Now()
+		for id, state := range updateState.sessions {
+			if now.Sub(state.createdAt) > updateSessionTTL {
+				delete(updateState.sessions, id)
+			}
+		}
+		// Bound memory even if a client creates many abandoned sessions. The
+		// oldest entry is safe to evict because a Download must consume its
+		// matching entry before use.
+		if len(updateState.sessions) >= maxUpdateSessions {
+			var oldest string
+			var oldestAt time.Time
+			for id, state := range updateState.sessions {
+				if oldest == "" || state.createdAt.Before(oldestAt) {
+					oldest, oldestAt = id, state.createdAt
+				}
+			}
+			delete(updateState.sessions, oldest)
+		}
+		updateState.sessions[sessionID] = updateSession{
+			downloadURL: asset.BrowserDownloadUrl,
+			assetName:   asset.Name,
+			checksumURL: findChecksumAsset(release.Assets),
+			createdAt:   time.Now(),
+		}
 		updateState.Unlock()
 
 		ret.AssetsName = asset.Name
@@ -191,12 +282,25 @@ func platformAssetTag() (string, error) {
 	}
 }
 
-func downloadUpdate(ctx context.Context, client *http.Client, ret *gen.UpdateResp) error {
+func downloadUpdate(ctx context.Context, client *http.Client, ret *gen.UpdateResp, sessionIDs ...string) error {
+	sessionID := firstUpdateSessionID(sessionIDs)
+	if sessionID == "" {
+		return fmt.Errorf("missing update session ID")
+	}
 	updateState.Lock()
-	rawURL := updateState.downloadURL
-	assetName := updateState.assetName
-	checksumURL := updateState.checksumURL
+	session, ok := updateState.sessions[sessionID]
+	// Consume the check result before doing network/disk work. This prevents
+	// replay and makes concurrent Download calls deterministic.
+	if ok {
+		delete(updateState.sessions, sessionID)
+	}
 	updateState.Unlock()
+	if !ok {
+		return fmt.Errorf("no update URL for session — run a check first")
+	}
+	rawURL := session.downloadURL
+	assetName := session.assetName
+	checksumURL := session.checksumURL
 
 	if rawURL == "" {
 		return fmt.Errorf("no download URL — run a check first")
@@ -213,6 +317,7 @@ func downloadUpdate(ctx context.Context, client *http.Client, ret *gen.UpdateRes
 		return err
 	}
 
+	client = clientWithUpdateRedirectPolicy(client)
 	wantSum, err := fetchChecksum(ctx, client, checksumURL, assetName)
 	if err != nil {
 		return err
@@ -279,10 +384,30 @@ func validateUpdateURL(raw string) error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("update URL must be https, got %q", u.Scheme)
 	}
-	if !allowedUpdateHosts[u.Hostname()] {
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if !allowedUpdateHosts[host] {
 		return fmt.Errorf("refusing update from unexpected host %q", u.Hostname())
 	}
 	return nil
+}
+
+// clientWithUpdateRedirectPolicy returns a shallow copy of client that checks
+// every redirect target.  GitHub release URLs normally redirect from github.com
+// to objects.githubusercontent.com, but a redirect to an arbitrary host must
+// never be allowed to bypass validateUpdateURL's allowlist.
+func clientWithUpdateRedirectPolicy(client *http.Client) *http.Client {
+	copy := *client
+	previous := client.CheckRedirect
+	copy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := validateUpdateURL(req.URL.String()); err != nil {
+			return err
+		}
+		if previous != nil {
+			return previous(req, via)
+		}
+		return nil
+	}
+	return &copy
 }
 
 // fetchChecksum downloads a `sha256sum`-style file and returns the digest
@@ -345,49 +470,131 @@ func updatePackagePath(assetName string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
-// compareVersions compares dotted versions such as "5.0.0-beta.3".
-// Returns -1 if a < b, 0 if equal, 1 if a > b. A pre-release sorts before the
-// corresponding final release.
+// compareVersions compares SemVer-like versions such as "5.0.0-beta.3".
+// Returns -1 if a < b, 0 if equal, 1 if a > b. Pre-release identifiers are
+// compared numerically where possible (beta.2 < beta.10), and build metadata
+// does not affect ordering.
 func compareVersions(a, b string) int {
-	aCore, aPre := splitPreRelease(a)
-	bCore, bPre := splitPreRelease(b)
+	aCore, aPre := splitPreRelease(strings.TrimPrefix(strings.TrimSpace(a), "v"))
+	bCore, bPre := splitPreRelease(strings.TrimPrefix(strings.TrimSpace(b), "v"))
 
 	aParts := strings.Split(aCore, ".")
 	bParts := strings.Split(bCore, ".")
 	for i := 0; i < len(aParts) || i < len(bParts); i++ {
-		av, bv := 0, 0
-		if i < len(aParts) {
-			av, _ = strconv.Atoi(aParts[i])
+		av, bv := "0", "0"
+		if i < len(aParts) && aParts[i] != "" {
+			av = aParts[i]
 		}
-		if i < len(bParts) {
-			bv, _ = strconv.Atoi(bParts[i])
+		if i < len(bParts) && bParts[i] != "" {
+			bv = bParts[i]
 		}
-		if av != bv {
-			if av < bv {
+		if cmp := compareNumericIdentifier(av, bv); cmp != 0 {
+			return cmp
+		}
+	}
+
+	// A version without a pre-release is newer than one with a pre-release.
+	if aPre == "" && bPre == "" {
+		return 0
+	}
+	if aPre == "" {
+		return 1
+	}
+	if bPre == "" {
+		return -1
+	}
+
+	aIDs := strings.Split(aPre, ".")
+	bIDs := strings.Split(bPre, ".")
+	for i := 0; i < len(aIDs) && i < len(bIDs); i++ {
+		if cmp := comparePreReleaseIdentifier(aIDs[i], bIDs[i]); cmp != 0 {
+			return cmp
+		}
+	}
+	switch {
+	case len(aIDs) < len(bIDs):
+		return -1
+	case len(aIDs) > len(bIDs):
+		return 1
+	default:
+		return 0
+	}
+}
+
+// splitPreRelease separates core, pre-release, and build metadata. Build
+// metadata is deliberately discarded because SemVer excludes it from order.
+func splitPreRelease(v string) (core, pre string) {
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		return v[:i], v[i+1:]
+	}
+	return v, ""
+}
+
+func comparePreReleaseIdentifier(a, b string) int {
+	aNumeric, bNumeric := isNumericIdentifier(a), isNumericIdentifier(b)
+	switch {
+	case aNumeric && bNumeric:
+		return compareNumericIdentifier(a, b)
+	case aNumeric:
+		return -1
+	case bNumeric:
+		return 1
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func isNumericIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// compareNumericIdentifier compares arbitrary-length decimal identifiers
+// without overflowing strconv.Atoi. Non-numeric core components retain the
+// old tolerant ordering by comparing them lexically after numeric values.
+func compareNumericIdentifier(a, b string) int {
+	if isNumericIdentifier(a) && isNumericIdentifier(b) {
+		a = strings.TrimLeft(a, "0")
+		b = strings.TrimLeft(b, "0")
+		if a == "" {
+			a = "0"
+		}
+		if b == "" {
+			b = "0"
+		}
+		if len(a) != len(b) {
+			if len(a) < len(b) {
 				return -1
 			}
 			return 1
 		}
-	}
-
-	switch {
-	case aPre == "" && bPre == "":
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
 		return 0
-	case aPre == "": // a is final, b is pre-release
-		return 1
-	case bPre == "":
+	}
+	if a < b {
 		return -1
-	case aPre < bPre:
-		return -1
-	case aPre > bPre:
+	}
+	if a > b {
 		return 1
 	}
 	return 0
-}
-
-func splitPreRelease(v string) (core, pre string) {
-	if i := strings.IndexAny(v, "-+"); i >= 0 {
-		return v[:i], v[i+1:]
-	}
-	return v, ""
 }

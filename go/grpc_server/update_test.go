@@ -1,6 +1,12 @@
 package grpc_server
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"google.golang.org/grpc/metadata"
+	"grpc_server/gen"
+)
 
 func TestCompareVersions(t *testing.T) {
 	cases := []struct {
@@ -63,5 +69,58 @@ func TestFindChecksumAsset(t *testing.T) {
 	}
 	if got := findChecksumAsset(assets[:1]); got != "" {
 		t.Errorf("findChecksumAsset = %q, want empty when no checksums published", got)
+	}
+}
+
+func TestUpdateSessionIDFromMetadata(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(UpdateSessionMetadataKey, " flow-a "))
+	if got := updateSessionID(ctx); got != "flow-a" {
+		t.Fatalf("updateSessionID = %q, want flow-a", got)
+	}
+	if got := updateSessionID(context.Background()); got != "" {
+		t.Fatalf("updateSessionID without metadata = %q, want empty", got)
+	}
+}
+
+func TestUpdateSessionsRemainBoundToTheirIDs(t *testing.T) {
+	updateState.Lock()
+	old := updateState.sessions
+	updateState.sessions = map[string]updateSession{
+		"flow-a": {downloadURL: "https://github.com/a", assetName: "a.zip"},
+		"flow-b": {downloadURL: "https://github.com/b", assetName: "b.zip"},
+	}
+	updateState.Unlock()
+	defer func() {
+		updateState.Lock()
+		updateState.sessions = old
+		updateState.Unlock()
+	}()
+
+	updateState.Lock()
+	first := updateState.sessions["flow-a"]
+	second := updateState.sessions["flow-b"]
+	updateState.Unlock()
+	if first.downloadURL == second.downloadURL || first.assetName == second.assetName {
+		t.Fatalf("session state was not isolated: %#v %#v", first, second)
+	}
+	discardUpdateSession("flow-a")
+	updateState.Lock()
+	_, firstExists := updateState.sessions["flow-a"]
+	_, secondExists := updateState.sessions["flow-b"]
+	updateState.Unlock()
+	if firstExists || !secondExists {
+		t.Fatalf("consuming flow-a affected another session: flow-a=%v flow-b=%v", firstExists, secondExists)
+	}
+}
+
+func TestUpdateRejectsUnknownAction(t *testing.T) {
+	s := &BaseServer{}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(UpdateSessionMetadataKey, "flow"))
+	resp, err := s.Update(ctx, &gen.UpdateReq{Action: gen.UpdateAction(99)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Error == "" {
+		t.Fatal("unknown action was accepted")
 	}
 }

@@ -27,7 +27,7 @@ jobs:
         run: flutter analyze
       - name: Check formatting
         working-directory: nekoray_flutter
-        run: dart format --set-exit-if-changed . || dart format .
+        run: dart format --set-exit-if-changed .
 
   test:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
         run: flutter pub get
       - name: Test
         working-directory: nekoray_flutter
-        run: flutter test --coverage || echo "no tests yet"
+        run: flutter test --coverage
       - uses: codecov/codecov-action@v4
         with:
           directory: nekoray_flutter/coverage

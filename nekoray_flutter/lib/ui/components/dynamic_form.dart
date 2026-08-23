@@ -48,7 +48,7 @@ class DynamicFormState extends State<DynamicForm> {
   /// fields, disposes those whose field disappeared, keeps the rest (so text
   /// typed into a field shared by two protocols survives a protocol switch).
   void _sync() {
-    final wanted = {for (final f in widget.fields) f.key: f};
+    final wanted = {for (final f in widget.fields) f.inputKey: f};
 
     for (final key in _controllers.keys.toList()) {
       if (!wanted.containsKey(key)) {
@@ -91,23 +91,26 @@ class DynamicFormState extends State<DynamicForm> {
   ///
   /// Empty optional fields are omitted rather than written as `""`, so the
   /// core's zero-value defaults apply instead of an explicit empty string.
-  Map<String, dynamic> collect() {
+  Map<String, dynamic> collect({bool includeEmptyOptional = false}) {
     final out = <String, dynamic>{};
     for (final f in widget.fields) {
       switch (f.type) {
         case FieldType.bool_:
-          out[f.key] = _bools[f.key] ?? false;
+          out[f.inputKey] = _bools[f.inputKey] ?? false;
           break;
         case FieldType.number:
-          final raw = _controllers[f.key]?.text.trim() ?? '';
-          if (raw.isEmpty) break;
+          final raw = _controllers[f.inputKey]?.text.trim() ?? '';
+          if (raw.isEmpty) {
+            if (includeEmptyOptional && !f.required) out[f.inputKey] = '';
+            break;
+          }
           final n = int.tryParse(raw);
-          if (n != null) out[f.key] = n;
+          if (n != null) out[f.inputKey] = n;
           break;
         default:
-          final raw = _controllers[f.key]?.text ?? '';
-          if (raw.isEmpty && !f.required) break;
-          out[f.key] = raw;
+          final raw = _controllers[f.inputKey]?.text ?? '';
+          if (raw.isEmpty && !f.required && !includeEmptyOptional) break;
+          out[f.inputKey] = raw;
       }
     }
     return out;
@@ -117,7 +120,7 @@ class DynamicFormState extends State<DynamicForm> {
   String? validate() {
     for (final f in widget.fields) {
       if (!f.required) continue;
-      final raw = _controllers[f.key]?.text.trim() ?? '';
+      final raw = _controllers[f.inputKey]?.text.trim() ?? '';
       if (raw.isEmpty) return '${f.label} is required';
       if (f.type == FieldType.number) {
         final n = int.tryParse(raw);
@@ -128,7 +131,7 @@ class DynamicFormState extends State<DynamicForm> {
       }
     }
     // Port is validated even when not marked required.
-    final portRaw = _controllers['port']?.text.trim();
+    final portRaw = _controllers[widget.fields.firstWhere((f) => f.key == 'port', orElse: () => const FieldSchema('port', '', FieldType.number)).inputKey]?.text.trim();
     if (portRaw != null && portRaw.isNotEmpty) {
       final n = int.tryParse(portRaw);
       if (n == null || n < 1 || n > 65535) {
@@ -151,7 +154,7 @@ class DynamicFormState extends State<DynamicForm> {
       case FieldType.password:
       case FieldType.multiline:
         return _padded(TextFormField(
-          controller: _controllers[f.key],
+          controller: _controllers[f.inputKey],
           decoration: InputDecoration(
             labelText: f.required ? '${f.label} *' : f.label,
             hintText: f.hint,
@@ -163,7 +166,7 @@ class DynamicFormState extends State<DynamicForm> {
 
       case FieldType.number:
         return _padded(TextFormField(
-          controller: _controllers[f.key],
+          controller: _controllers[f.inputKey],
           decoration: InputDecoration(
             labelText: f.required ? '${f.label} *' : f.label,
             hintText: f.hint,
@@ -174,7 +177,7 @@ class DynamicFormState extends State<DynamicForm> {
 
       case FieldType.combo:
         final options = f.options ?? const <String>[];
-        final controller = _controllers[f.key];
+        final controller = _controllers[f.inputKey];
         final current = controller?.text ?? '';
         // Only feed the dropdown a value it actually offers; anything else
         // (e.g. a value imported from a share link) is preserved in the
@@ -207,10 +210,10 @@ class DynamicFormState extends State<DynamicForm> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: CheckboxListTile(
-            value: _bools[f.key] ?? false,
+            value: _bools[f.inputKey] ?? false,
             title: Text(f.label),
             subtitle: f.hint == null ? null : Text(f.hint!),
-            onChanged: (v) => setState(() => _bools[f.key] = v ?? false),
+            onChanged: (v) => setState(() => _bools[f.inputKey] = v ?? false),
           ),
         );
     }

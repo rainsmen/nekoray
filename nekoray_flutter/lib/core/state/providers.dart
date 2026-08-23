@@ -19,6 +19,8 @@ final profileListProvider =
 /// being swallowed.
 final corruptProfilesProvider = StateProvider<List<String>>((ref) => const []);
 
+const _maxSubscriptionBytes = 8 << 20;
+
 class ProfileListNotifier
     extends StateNotifier<AsyncValue<List<ProxyEntity>>> {
   ProfileListNotifier() : super(const AsyncValue.loading());
@@ -93,9 +95,14 @@ class ProfileListNotifier
         responseType: ResponseType.plain,
         // A subscription is text; refuse anything implausibly large.
         maxRedirects: 5,
+        maxContentLength: _maxSubscriptionBytes,
+        maxBodyLength: _maxSubscriptionBytes,
       ));
       final response = await dio.getUri<String>(uri);
       content = response.data ?? '';
+      if (content.length > _maxSubscriptionBytes) {
+        return 'Subscription content exceeds 8 MiB';
+      }
     } on DioException catch (e) {
       return 'Download failed: ${e.message ?? e.type.name}';
     } catch (e) {

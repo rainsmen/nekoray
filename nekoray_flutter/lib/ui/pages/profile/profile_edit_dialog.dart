@@ -49,9 +49,9 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
     for (final f in protocolSchemas[_type] ?? const <FieldSchema>[]) {
       if (f.group == FieldGroup.stream) {
         final stream = _bean['stream'];
-        if (stream is Map) values[f.key] = stream[f.key];
+        if (stream is Map) values[f.inputKey] = stream[f.key];
       } else {
-        values[f.key] = _bean[f.key];
+        values[f.inputKey] = _bean[f.key];
       }
     }
     return values;
@@ -119,11 +119,11 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
   /// into the nested `stream` object.
   void _mergeForm() {
     final state = _formKey.currentState;
-    final collected = state?.collect();
+    final collected = state?.collect(includeEmptyOptional: true);
     if (collected == null) return;
 
     final schema = {
-      for (final f in protocolSchemas[_type] ?? const <FieldSchema>[]) f.key: f
+      for (final f in protocolSchemas[_type] ?? const <FieldSchema>[]) f.inputKey: f
     };
 
     for (final entry in collected.entries) {
@@ -134,10 +134,10 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
         final map = stream is Map
             ? Map<String, dynamic>.from(stream)
             : <String, dynamic>{};
-        map[entry.key] = entry.value;
+        map[field.key] = entry.value;
         _bean['stream'] = map;
       } else {
-        _bean[entry.key] = entry.value;
+        _bean[field.key] = entry.value;
       }
     }
 

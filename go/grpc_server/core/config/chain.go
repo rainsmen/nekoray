@@ -201,17 +201,31 @@ func makeRule(list []string, isIP bool) map[string]interface{} {
 		if len(ipCidr) == 0 && len(geoip) == 0 {
 			return nil
 		}
-		rule["ip_cidr"] = ipCidr
-		rule["geoip"] = geoip
+		if len(ipCidr) > 0 {
+			rule["ip_cidr"] = ipCidr
+		}
+		if len(geoip) > 0 {
+			rule["geoip"] = geoip
+		}
 	} else {
 		if len(domainKeyword) == 0 && len(domainSubdomain) == 0 && len(domainRegexp) == 0 && len(domainFull) == 0 && len(geosite) == 0 {
 			return nil
 		}
-		rule["domain"] = domainFull
-		rule["domain_suffix"] = domainSubdomain
-		rule["domain_keyword"] = domainKeyword
-		rule["domain_regex"] = domainRegexp
-		rule["geosite"] = geosite
+		if len(domainFull) > 0 {
+			rule["domain"] = domainFull
+		}
+		if len(domainSubdomain) > 0 {
+			rule["domain_suffix"] = domainSubdomain
+		}
+		if len(domainKeyword) > 0 {
+			rule["domain_keyword"] = domainKeyword
+		}
+		if len(domainRegexp) > 0 {
+			rule["domain_regex"] = domainRegexp
+		}
+		if len(geosite) > 0 {
+			rule["geosite"] = geosite
+		}
 	}
 	return rule
 }
@@ -232,21 +246,21 @@ func buildDNS(status *BuildStatus, result *BuildResult) {
 	// Remote
 	if !status.ForTest {
 		dnsServers = append(dnsServers, map[string]interface{}{
-			"tag":             "dns-remote",
+			"tag":              "dns-remote",
 			"address_resolver": "dns-local",
-			"strategy":        routing.RemoteDNSStrategy,
-			"address":         routing.RemoteDNS,
-			"detour":          "proxy",
+			"strategy":         routing.RemoteDNSStrategy,
+			"address":          routing.RemoteDNS,
+			"detour":           "proxy",
 		})
 	}
 
 	// Direct
 	directObj := map[string]interface{}{
-		"tag":             "dns-direct",
+		"tag":              "dns-direct",
 		"address_resolver": "dns-local",
-		"strategy":        routing.DirectDNSStrategy,
-		"address":         routing.DirectDNS,
-		"detour":          "direct",
+		"strategy":         routing.DirectDNSStrategy,
+		"address":          routing.DirectDNS,
+		"detour":           "direct",
 	}
 	if routing.DNSFinalOut == "bypass" {
 		dnsServers = prependMap(dnsServers, directObj)
@@ -314,9 +328,9 @@ func buildDNS(status *BuildStatus, result *BuildResult) {
 	}
 
 	dns := map[string]interface{}{
-		"servers":            dnsServers,
-		"rules":              dnsRules,
-		"independent_cache":  true,
+		"servers":           dnsServers,
+		"rules":             dnsRules,
+		"independent_cache": true,
 	}
 
 	if ds.FakeDNS && ds.VPNInternalTun && ds.SpmodeVPN && !status.ForTest {
@@ -373,8 +387,8 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 			"outbound": "block",
 		},
 		map[string]interface{}{
-			"ip_cidr":   []string{"224.0.0.0/3", "ff00::/8"},
-			"outbound":  "block",
+			"ip_cidr":  []string{"224.0.0.0/3", "ff00::/8"},
+			"outbound": "block",
 		},
 		map[string]interface{}{
 			"source_ip_cidr": []string{"224.0.0.0/3", "ff00::/8"},
@@ -434,7 +448,7 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	}
 
 	routeObj := map[string]interface{}{
-		"rules":              allRules,
+		"rules":                 allRules,
 		"auto_detect_interface": ds.SpmodeVPN,
 	}
 	if !status.ForTest {

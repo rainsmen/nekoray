@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -21,14 +22,9 @@ const maxEntrySize = 256 << 20
 const maxTotalSize = 1 << 30
 
 func Updater() {
-	pre_cleanup := func() {
-		if runtime.GOOS == "linux" {
-			os.RemoveAll("./usr")
-		}
-		os.RemoveAll("./nekoray_update")
-	}
-
-	// find update package
+	// Find the update package without touching the existing installation. The
+	// package is extracted into a private staging directory first; cleanup and
+	// replacement only begin after extraction and payload validation succeed.
 	var updatePackagePath string
 	if len(os.Args) == 2 && Exist(os.Args[1]) {
 		updatePackagePath = os.Args[1]
@@ -45,38 +41,74 @@ func Updater() {
 	}
 	log.Println("updating from", updatePackagePath)
 
-	// extract update package
-	var err error
-	switch {
-	case strings.HasSuffix(updatePackagePath, ".zip"):
-		pre_cleanup()
-		err = extractZip(updatePackagePath, "./nekoray_update")
-	case strings.HasSuffix(updatePackagePath, ".tar.gz"):
-		pre_cleanup()
-		err = extractTarGz(updatePackagePath, "./nekoray_update")
-	default:
-		log.Fatalln("unsupported package format:", updatePackagePath)
-	}
+	stagingDir, err := extractUpdatePackage(updatePackagePath)
 	if err != nil {
 		MessageBoxPlain("NekoGui Updater", "Update package is invalid or unsafe.\n\n"+err.Error())
 		log.Fatalln(err.Error())
 	}
+	// Keep the staging directory alive through Mv below. It is removed only
+	// after replacement succeeds (or on an early validation failure).
+	stagingOwned := true
+	defer func() {
+		if stagingOwned {
+			os.RemoveAll(stagingDir)
+		}
+	}()
 
-	// remove old file
-	removeAll("./*.dll")
-	removeAll("./*.dmp")
-
-	// update move
-	if err := Mv("./nekoray_update/nekoray", "./"); err != nil {
-		MessageBoxPlain("NekoGui Updater", "Update failed. Please close the running instance and run the updater again.\n\n"+err.Error())
+	// The archive is considered valid only when it contains the payload that
+	// Mv below expects. This check must precede any destructive cleanup.
+	payload := filepath.Join(stagingDir, "nekoray")
+	if !Exist(payload) {
+		err = fmt.Errorf("update package has no nekoray payload")
+		MessageBoxPlain("NekoGui Updater", "Update package is invalid or unsafe.\n\n"+err.Error())
 		log.Fatalln(err.Error())
 	}
 
-	os.RemoveAll("./nekoray_update")
+	// Replace the installation transactionally. Existing top-level entries are
+	// moved to a private backup directory before any new payload entry is
+	// installed. If a later rename fails, the already-installed entries are
+	// removed and the backup is restored, so a partial update cannot strand the
+	// application in a mixed old/new state.
+	if err := replacePayload(payload, ".", runtime.GOOS == "linux"); err != nil {
+		MessageBoxPlain("NekoGui Updater", "Update failed. Please close the running instance and run the updater again.\n\n"+err.Error())
+		log.Fatalln(err.Error())
+	}
+	stagingOwned = false
+	os.RemoveAll(stagingDir)
+
 	os.Remove("./nekoray-update.zip")
 	os.Remove("./nekoray-update.tar.gz")
 	os.Remove("./nekoray.zip")
 	os.Remove("./nekoray.tar.gz")
+}
+
+// extractUpdatePackage validates and extracts an update into a newly-created
+// staging directory. The caller owns the returned directory and must remove it.
+func extractUpdatePackage(src string) (string, error) {
+	stagingDir, err := os.MkdirTemp(filepath.Dir(src), ".nekoray-update-stage-*")
+	if err != nil {
+		return "", err
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			os.RemoveAll(stagingDir)
+		}
+	}()
+
+	switch {
+	case strings.HasSuffix(src, ".zip"):
+		err = extractZip(src, stagingDir)
+	case strings.HasSuffix(src, ".tar.gz"):
+		err = extractTarGz(src, stagingDir)
+	default:
+		err = fmt.Errorf("unsupported package format: %s", src)
+	}
+	if err != nil {
+		return "", err
+	}
+	cleanup = false
+	return stagingDir, nil
 }
 
 // safeJoin resolves name against destRoot, refusing any path that would escape
@@ -112,7 +144,7 @@ func writeEntry(target string, mode os.FileMode, r io.Reader, budget *int64) err
 	}
 	// O_EXCL is deliberate: an archive must not overwrite a file another entry
 	// already produced, and it defeats symlink-swap races in the staging dir.
-	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, mode.Perm())
 	if err != nil {
 		return err
 	}
@@ -246,6 +278,125 @@ func FindExist(paths []string) string {
 		}
 	}
 	return ""
+}
+
+// replacePayload installs the contents of payload into dest with rollback.
+// The payload is expected to contain only regular files/directories produced by
+// extractUpdatePackage, so moving each top-level entry is sufficient and keeps
+// renames on the same filesystem.
+func replacePayload(payload, dest string, removeUsr bool) error {
+	entries, err := os.ReadDir(payload)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("update payload is empty")
+	}
+
+	backup, err := os.MkdirTemp(filepath.Dir(dest), ".nekoray-update-backup-*")
+	if err != nil {
+		return err
+	}
+	backupOwned := true
+	defer func() {
+		if backupOwned {
+			_ = os.RemoveAll(backup)
+		}
+	}()
+
+	// Include stale files from older layouts in the transaction. They are only
+	// deleted after the new payload has been installed successfully.
+	stale := make([]string, 0, 4)
+	if removeUsr {
+		stale = append(stale, filepath.Join(dest, "usr"))
+	}
+	stale = append(stale, filepath.Join(dest, "nekoray_update"))
+	for _, pattern := range []string{"*.dll", "*.dmp"} {
+		matches, _ := filepath.Glob(filepath.Join(dest, pattern))
+		for _, match := range matches {
+			stale = append(stale, match)
+		}
+	}
+
+	// Build a de-duplicated list of targets to back up. Paths are kept relative
+	// to dest so the backup tree can be restored with the same names.
+	targets := make([]string, 0, len(entries)+len(stale))
+	seen := make(map[string]struct{}, len(entries)+len(stale))
+	addTarget := func(path string) {
+		rel, relErr := filepath.Rel(dest, path)
+		if relErr != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return
+		}
+		if _, ok := seen[rel]; ok {
+			return
+		}
+		seen[rel] = struct{}{}
+		targets = append(targets, rel)
+	}
+	for _, entry := range entries {
+		addTarget(filepath.Join(dest, entry.Name()))
+	}
+	for _, path := range stale {
+		addTarget(path)
+	}
+	sort.Strings(targets)
+
+	backedUp := make([]string, 0, len(targets))
+	restoreBackups := func() {
+		for i := len(backedUp) - 1; i >= 0; i-- {
+			rel := backedUp[i]
+			from := filepath.Join(backup, rel)
+			to := filepath.Join(dest, rel)
+			if _, err := os.Lstat(from); err == nil {
+				_ = os.MkdirAll(filepath.Dir(to), 0o755)
+				_ = os.Rename(from, to)
+			}
+		}
+	}
+	for _, rel := range targets {
+		target := filepath.Join(dest, rel)
+		if _, err := os.Lstat(target); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			restoreBackups()
+			return err
+		}
+		backupPath := filepath.Join(backup, rel)
+		if err := os.MkdirAll(filepath.Dir(backupPath), 0o755); err != nil {
+			restoreBackups()
+			return err
+		}
+		if err := os.Rename(target, backupPath); err != nil {
+			restoreBackups()
+			return fmt.Errorf("backup %s: %w", rel, err)
+		}
+		backedUp = append(backedUp, rel)
+	}
+
+	installed := make([]string, 0, len(entries))
+	rollback := func() {
+		for i := len(installed) - 1; i >= 0; i-- {
+			_ = os.RemoveAll(filepath.Join(dest, installed[i]))
+		}
+		restoreBackups()
+	}
+
+	for _, entry := range entries {
+		rel := entry.Name()
+		if err := os.Rename(filepath.Join(payload, rel), filepath.Join(dest, rel)); err != nil {
+			rollback()
+			return fmt.Errorf("install %s: %w", rel, err)
+		}
+		installed = append(installed, rel)
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		// The installation itself succeeded; retaining a backup is safer than
+		// reporting failure and attempting to roll back a live installation.
+		return nil
+	}
+	backupOwned = false
+	return nil
 }
 
 func Mv(src, dst string) error {

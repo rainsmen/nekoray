@@ -42,7 +42,6 @@ jobs:
 
       - name: Build Android Go core
         run: ./libs/build_android.sh
-        continue-on-error: true # gomobile may need extra setup; log result
 
       - name: Enable Android platform
         working-directory: nekoray_flutter
@@ -55,15 +54,12 @@ jobs:
       - name: Build APK
         working-directory: nekoray_flutter
         run: flutter build apk --release --split-per-abi
-        continue-on-error: true
 
       - name: Build App Bundle
         working-directory: nekoray_flutter
         run: flutter build appbundle --release
-        continue-on-error: true
 
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: nekoray-android
           path: |
@@ -71,3 +67,4 @@ jobs:
             nekoray_flutter/build/app/outputs/bundle/release/*.aab
             deployment/android/
           retention-days: 14
+          if-no-files-found: error

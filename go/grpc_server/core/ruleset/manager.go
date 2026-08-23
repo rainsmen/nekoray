@@ -8,6 +8,7 @@ package ruleset
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,13 +21,13 @@ import (
 	"time"
 )
 
-// isHTTPURL reports whether raw is an absolute http/https URL.
+// isHTTPURL reports whether raw is an absolute HTTPS URL.
 func isHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return false
 	}
-	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+	return u.Scheme == "https" && u.Host != ""
 }
 
 // Manager caches remote rule_set files locally.
@@ -38,13 +39,13 @@ type Manager struct {
 
 // Info describes a cached rule_set.
 type Info struct {
-	Tag       string
-	Type      string // "remote" or "local"
-	Format    string // "source" or "binary"
-	URL       string
-	UpdatedAt int64
-	Size      int64
-	LocalPath string
+	Tag       string `json:"tag"`
+	Type      string `json:"type"`   // "remote" or "local"
+	Format    string `json:"format"` // "source" or "binary"
+	URL       string `json:"url"`
+	UpdatedAt int64  `json:"updated_at"`
+	Size      int64  `json:"size"`
+	LocalPath string `json:"local_path"`
 }
 
 // NewManager creates a Manager rooted at cacheDir.
@@ -55,10 +56,99 @@ func NewManager(cacheDir string) *Manager {
 	if abs, err := filepath.Abs(cacheDir); err == nil {
 		cacheDir = abs
 	}
-	return &Manager{
+	m := &Manager{
 		cacheDir: cacheDir,
 		items:    map[string]*Info{},
 	}
+	m.loadIndex()
+	return m
+}
+
+const indexFileName = "index.json"
+const indexBackupName = "index.json.bak"
+
+func (m *Manager) indexPath() string       { return filepath.Join(m.cacheDir, indexFileName) }
+func (m *Manager) indexBackupPath() string { return filepath.Join(m.cacheDir, indexBackupName) }
+
+// loadIndex restores registrations from the previous process. Invalid or
+// missing metadata is ignored; cached payloads remain harmless files until a
+// caller explicitly registers them again.
+func (m *Manager) loadIndex() {
+	data, err := os.ReadFile(m.indexPath())
+	if err != nil {
+		// Recover a metadata file left behind by an interrupted replacement.
+		data, err = os.ReadFile(m.indexBackupPath())
+		if err != nil {
+			return
+		}
+	}
+	var items map[string]*Info
+	if json.Unmarshal(data, &items) != nil {
+		return
+	}
+	for tag, item := range items {
+		if item == nil || !validTag.MatchString(tag) || item.Tag != tag {
+			continue
+		}
+		if item.LocalPath != "" {
+			if rel, err := filepath.Rel(m.cacheDir, item.LocalPath); err != nil ||
+				rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				continue
+			}
+		}
+		m.items[tag] = item
+	}
+}
+
+// saveIndexLocked atomically persists the in-memory registry. The caller must
+// hold m.mu; a temporary file prevents a crash from leaving truncated JSON.
+func (m *Manager) saveIndexLocked() error {
+	if err := os.MkdirAll(m.cacheDir, 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(m.items, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(m.cacheDir, ".index-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	ok := false
+	defer func() {
+		_ = tmp.Close()
+		if !ok {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	backupPath := m.indexBackupPath()
+	_ = os.Remove(backupPath)
+	hadOld := false
+	if _, err := os.Stat(m.indexPath()); err == nil {
+		if err := os.Rename(m.indexPath(), backupPath); err != nil {
+			return err
+		}
+		hadOld = true
+	}
+	if err := os.Rename(tmpPath, m.indexPath()); err != nil {
+		if hadOld {
+			_ = os.Rename(backupPath, m.indexPath())
+		}
+		return err
+	}
+	_ = os.Remove(backupPath)
+	ok = true
+	return nil
 }
 
 // defaultCacheDir returns an absolute cache directory that does not depend on
@@ -101,13 +191,25 @@ func (m *Manager) Register(tag, format, url string) error {
 	if !validTag.MatchString(tag) {
 		return fmt.Errorf("invalid rule_set tag %q", tag)
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.items[tag] == nil {
+	var previous *Info
+	if current, ok := m.items[tag]; ok {
+		cp := *current
+		previous = &cp
+	}
+	existed := previous != nil
+	if !existed {
 		m.items[tag] = &Info{Tag: tag, Type: "remote", Format: format, URL: url}
 	} else {
 		m.items[tag].URL = url
 		m.items[tag].Format = format
+	}
+	if err := m.saveIndexLocked(); err != nil {
+		if existed {
+			m.items[tag] = previous
+		} else {
+			delete(m.items, tag)
+		}
+		return err
 	}
 	return nil
 }
@@ -123,7 +225,7 @@ func (m *Manager) Download(ctx context.Context, tag, format, url string) (string
 		format = "binary"
 	}
 	if !isHTTPURL(url) {
-		return "", fmt.Errorf("rule_set url must be http(s): %q", url)
+		return "", fmt.Errorf("rule_set url must be https: %q", url)
 	}
 
 	ext := ".mrs"
@@ -170,13 +272,54 @@ func (m *Manager) Download(ctx context.Context, tag, format, url string) (string
 		os.Remove(tmpPath)
 		return "", err
 	}
+	// Serialize final file replacement and index persistence per manager so two
+	// concurrent downloads for the same tag cannot swap each other's backups.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Preserve the previous payload until metadata persistence succeeds. This
+	// keeps the index and bytes consistent if the disk fills during index.json
+	// replacement.
+	backupFile, err := os.CreateTemp(m.cacheDir, "."+tag+".backup-*")
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	backupPath := backupFile.Name()
+	if err := backupFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		os.Remove(backupPath)
+		return "", err
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	hadOld := false
+	if _, err := os.Stat(path); err == nil {
+		if err := os.Rename(path, backupPath); err != nil {
+			os.Remove(tmpPath)
+			return "", err
+		}
+		hadOld = true
+	} else if !os.IsNotExist(err) {
+		os.Remove(tmpPath)
+		return "", err
+	}
 	if err := os.Rename(tmpPath, path); err != nil {
+		if hadOld {
+			_ = os.Rename(backupPath, path)
+		}
 		os.Remove(tmpPath)
 		return "", err
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var previous *Info
+	if current, ok := m.items[tag]; ok {
+		cp := *current
+		previous = &cp
+	}
 	m.items[tag] = &Info{
 		Tag:       tag,
 		Type:      "remote",
@@ -186,6 +329,21 @@ func (m *Manager) Download(ctx context.Context, tag, format, url string) (string
 		Size:      n,
 		LocalPath: path,
 	}
+	if err := m.saveIndexLocked(); err != nil {
+		_ = os.Remove(path)
+		if hadOld {
+			_ = os.Rename(backupPath, path)
+		} else {
+			_ = os.Remove(backupPath)
+		}
+		if previous != nil {
+			m.items[tag] = previous
+		} else {
+			delete(m.items, tag)
+		}
+		return "", err
+	}
+	_ = os.Remove(backupPath)
 	return path, nil
 }
 

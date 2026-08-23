@@ -91,7 +91,7 @@ func BuildStreamSettingsSingBox(stream *nekokfmt.V2RayStreamSettings, outbound m
 				sid = sid[:idx]
 			}
 			tls["reality"] = map[string]interface{}{
-				"enabled":   true,
+				"enabled":    true,
 				"public_key": stream.RealityPbk,
 				"short_id":   sid,
 			}
@@ -109,7 +109,8 @@ func BuildStreamSettingsSingBox(stream *nekokfmt.V2RayStreamSettings, outbound m
 	}
 
 	// packet encoding for vmess/vless
-	if outbound["type"] == "vmess" || outbound["type"] == "vless" {
+	if (outbound["type"] == "vmess" || outbound["type"] == "vless") &&
+		strings.TrimSpace(stream.PacketEncoding) != "" {
 		outbound["packet_encoding"] = stream.PacketEncoding
 	}
 }
@@ -322,8 +323,8 @@ func parseInt(s string) int {
 // buildTLS builds a sing-box TLS object from common fields.
 func buildTLS(sni string, allowInsecure bool, alpn string) map[string]interface{} {
 	tls := map[string]interface{}{
-		"enabled": true,
-		"insecure": allowInsecure,
+		"enabled":     true,
+		"insecure":    allowInsecure,
 		"server_name": sni,
 	}
 	if strings.TrimSpace(alpn) != "" {
@@ -448,7 +449,7 @@ func buildWireGuard(b *nekokfmt.WireGuardBean) map[string]interface{} {
 
 	// Peer (sing-box v1.13 uses the single-peer endpoint model)
 	peer := map[string]interface{}{
-		"server":     b.ServerAddress,
+		"server":      b.ServerAddress,
 		"server_port": b.ServerPort,
 	}
 	if strings.TrimSpace(b.PeerPublicKey) != "" {

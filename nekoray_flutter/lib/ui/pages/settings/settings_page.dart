@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
+import '../../../core/i18n.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
@@ -15,22 +16,24 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(i18nProvider);
+    final t = I18n.t;
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     final connection = ref.watch(coreConnectionProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(t('settings'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _SectionTitle('Proxy'),
+          _SectionTitle(t('proxy')),
           Card(
             child: Column(
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.public),
-                  title: const Text('System Proxy'),
+                  title: Text(t('systemProxy')),
                   subtitle: Text(SystemIntegration.supportsSystemProxy
                       ? 'Point the OS at ${settings.listenAddress}:${settings.mixedPort}'
                       : 'Not available on this desktop environment'),
@@ -42,7 +45,7 @@ class SettingsPage extends ConsumerWidget {
                 const Divider(height: 1),
                 SwitchListTile(
                   secondary: const Icon(Icons.vpn_lock),
-                  title: const Text('TUN Mode'),
+                  title: Text(t('tunMode')),
                   subtitle: const Text(
                       'Route all traffic through a virtual interface. '
                       'Requires the core to run with elevated privileges.'),
@@ -54,13 +57,13 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          _SectionTitle('Core'),
+          _SectionTitle(t('core')),
           Card(
             child: Column(
               children: [
                 ListTile(
                   leading: const Icon(Icons.settings_ethernet),
-                  title: const Text('Mixed Port'),
+                  title: Text(t('mixedPort')),
                   subtitle: Text('${settings.mixedPort}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
@@ -75,7 +78,7 @@ class SettingsPage extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.dns),
-                  title: const Text('Listen Address'),
+                  title: Text(t('listenAddress')),
                   subtitle: Text(settings.listenAddress),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
@@ -90,7 +93,7 @@ class SettingsPage extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.hub),
-                  title: const Text('Core gRPC Port'),
+                  title: Text(t('corePort')),
                   subtitle: Text(settings.corePort == 0
                       ? 'Automatic${connection.port != null ? ' (currently ${connection.port})' : ''}'
                       : '${settings.corePort}'),
@@ -254,10 +257,10 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(t('cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Import')),
+              child: Text(t('import'))),
         ],
       ),
     );
@@ -307,7 +310,7 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(t('cancel')),
           ),
           FilledButton(
             onPressed: () async {
@@ -352,7 +355,7 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(t('cancel')),
           ),
           FilledButton(
             onPressed: () async {

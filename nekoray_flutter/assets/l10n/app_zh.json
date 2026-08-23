@@ -43,5 +43,10 @@
   "port": "端口",
   "password": "密码",
   "username": "用户名",
-  "name": "名称"
+  "name": "名称",
+  "retry": "重试",
+  "import": "导入",
+  "proxy": "代理",
+  "core": "核心",
+  "behavior": "行为"
 }

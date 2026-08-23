@@ -16,10 +16,10 @@ import (
 
 // BuildResult mirrors NekoGui::BuildConfigResult.
 type BuildResult struct {
-	CoreConfig     map[string]interface{}
-	OutboundStats  []OutboundStat
-	ExtResults     []ExternalBuildResult
-	Error          string
+	CoreConfig    map[string]interface{}
+	OutboundStats []OutboundStat
+	ExtResults    []ExternalBuildResult
+	Error         string
 }
 
 // OutboundStat tracks a tag for traffic stats.
@@ -40,25 +40,25 @@ type ExternalBuildResult struct {
 
 // BuildStatus tracks the in-progress build state.
 type BuildStatus struct {
-	Ent               *nekokfmt.ProxyEntity
-	Group             *nekokfmt.Group
-	Routing           *nekokfmt.Routing
-	DataStore         *nekokfmt.DataStore
-	ForTest           bool
-	ForExport         bool
-	GlobalProfiles    map[int]bool
-	Outbounds         []map[string]interface{}
-	Inbounds          []map[string]interface{}
-	RoutingRules      []map[string]interface{}
-	IgnoreConnTag     []string
-	DomainListDNSRemote  []string
-	DomainListDNSDirect  []string
-	DomainListRemote     []string
-	DomainListDirect     []string
-	DomainListBlock      []string
-	IPListRemote         []string
-	IPListDirect         []string
-	IPListBlock          []string
+	Ent                 *nekokfmt.ProxyEntity
+	Group               *nekokfmt.Group
+	Routing             *nekokfmt.Routing
+	DataStore           *nekokfmt.DataStore
+	ForTest             bool
+	ForExport           bool
+	GlobalProfiles      map[int]bool
+	Outbounds           []map[string]interface{}
+	Inbounds            []map[string]interface{}
+	RoutingRules        []map[string]interface{}
+	IgnoreConnTag       []string
+	DomainListDNSRemote []string
+	DomainListDNSDirect []string
+	DomainListRemote    []string
+	DomainListDirect    []string
+	DomainListBlock     []string
+	IPListRemote        []string
+	IPListDirect        []string
+	IPListBlock         []string
 }
 
 // BuildConfig is the entry point, mirroring NekoGui::BuildConfig.
@@ -71,23 +71,25 @@ func BuildConfig(ent *nekokfmt.ProxyEntity, group *nekokfmt.Group, routing *neko
 		CoreConfig: map[string]interface{}{},
 	}
 	status := &BuildStatus{
-		Ent:           ent,
-		Group:         group,
-		Routing:       routing,
-		DataStore:     ds,
-		ForTest:       forTest,
-		ForExport:     forExport,
+		Ent:            ent,
+		Group:          group,
+		Routing:        routing,
+		DataStore:      ds,
+		ForTest:        forTest,
+		ForExport:      forExport,
 		GlobalProfiles: map[int]bool{},
 	}
 
 	// Custom bean with core="internal-full" uses the bean's config directly.
-	if ent.Type == string(nekokfmt.BeanCustom) {
+	if ent != nil && ent.Type == string(nekokfmt.BeanCustom) {
 		var cb nekokfmt.CustomBean
 		if err := json.Unmarshal(ent.Bean, &cb); err == nil && cb.Core == "internal-full" {
 			var raw map[string]interface{}
-			if err := json.Unmarshal([]byte(cb.ConfigSimple), &raw); err == nil {
-				result.CoreConfig = raw
+			if err := json.Unmarshal([]byte(cb.ConfigSimple), &raw); err != nil {
+				result.Error = fmt.Sprintf("invalid internal-full config: %v", err)
+				return result
 			}
+			result.CoreConfig = raw
 			return result
 		}
 	}
@@ -155,15 +157,15 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 	// TUN inbound (VPN mode)
 	if ds.VPNInternalTun && ds.SpmodeVPN && !status.ForTest {
 		inbound := map[string]interface{}{
-			"tag":                       "tun-in",
-			"type":                      "tun",
-			"interface_name":            genTunName(),
-			"auto_route":                true,
-			"endpoint_independent_nat":  true,
-			"mtu":                       ds.VPNMTU,
-			"stack":                     vpnImplementation(ds.VPNImplementation),
-			"strict_route":              ds.VPNStrictRoute,
-			"inet4_address":             "172.19.0.1/28",
+			"tag":                      "tun-in",
+			"type":                     "tun",
+			"interface_name":           genTunName(),
+			"auto_route":               true,
+			"endpoint_independent_nat": true,
+			"mtu":                      ds.VPNMTU,
+			"stack":                    vpnImplementation(ds.VPNImplementation),
+			"strict_route":             ds.VPNStrictRoute,
+			"inet4_address":            "172.19.0.1/28",
 		}
 		if ds.VPNIPv6 {
 			inbound["inet6_address"] = "fdfe:dcba:9876::1/126"

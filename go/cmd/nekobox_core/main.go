@@ -22,6 +22,8 @@ func main() {
 		token, port := parseArgs(os.Args[2:])
 		grpc_server.SetVersion(CoreVersion)
 		grpc_server.SetProxyHttpClientFactory(resolveProxyClient)
+		grpc_server.SetUdpDialFunc(resolveProxyUDPDialer)
+		grpc_server.SetShutdownHook(shutdownCoreInstance)
 		grpc_server.RunCore(token, port, Debug, &server{})
 		return
 	}

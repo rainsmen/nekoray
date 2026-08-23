@@ -7,7 +7,7 @@
 #
 # Requires: ANDROID_NDK_HOME or ANDROID_NDK_ROOT set, Go 1.22+
 
-set -e
+set -euo pipefail
 
 source libs/env_deploy.sh
 DEST=$DEPLOYMENT/android

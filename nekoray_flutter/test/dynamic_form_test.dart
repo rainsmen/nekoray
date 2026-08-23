@@ -106,7 +106,7 @@ void main() {
 
   test('every schema key is unique within its protocol', () {
     protocolSchemas.forEach((type, fields) {
-      final keys = fields.map((f) => f.key).toList();
+      final keys = fields.map((f) => f.inputKey).toList();
       expect(keys.toSet().length, keys.length,
           reason: 'duplicate field key in "$type" schema — the later field '
               'would shadow the earlier one in collect()');

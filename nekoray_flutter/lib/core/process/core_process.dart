@@ -106,7 +106,10 @@ class CoreProcess {
     final process = await Process.start(
       exe,
       args,
-      environment: {'NEKORAY_AUTH_TOKEN': token},
+      environment: {
+        ...Platform.environment,
+        'NEKORAY_AUTH_TOKEN': token,
+      },
       workingDirectory: File(exe).parent.path,
       // The core must not inherit the GUI's stdin; it prompts for a token when
       // one is not supplied and would otherwise block forever.

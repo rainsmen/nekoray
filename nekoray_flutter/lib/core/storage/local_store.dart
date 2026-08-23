@@ -11,6 +11,7 @@
 // truncated JSON behind on crash, and the loader silently discarded it —
 // losing the profile without telling anyone.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -20,6 +21,12 @@ class LocalStore {
   LocalStore._();
 
   static const _encoder = JsonEncoder.withIndent('  ');
+
+  // Serialize ID scans and reservations within this process. Without this,
+  // concurrent imports can observe the same max ID and overwrite each other.
+  static Future<void> _idLock = Future<void>.value();
+  static int? _nextProfileId;
+  static int? _nextGroupId;
 
   /// Overridable for tests.
   static Directory? overrideRoot;
@@ -90,6 +97,25 @@ class LocalStore {
     }
   }
 
+  static Future<void> _writeAtomicBytes(File file, List<int> content) async {
+    final dir = file.parent;
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final tmp = File(
+        '${dir.path}/.${_baseName(file.path)}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+    try {
+      await tmp.writeAsBytes(content, flush: true);
+      await _restrictPermissions(tmp.path);
+      await tmp.rename(file.path);
+    } catch (e) {
+      if (await tmp.exists()) {
+        try {
+          await tmp.delete();
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
   static String _baseName(String path) =>
       path.replaceAll('\\', '/').split('/').last;
 
@@ -136,7 +162,7 @@ class LocalStore {
   /// Saves several profiles, rolling back everything on failure so a partial
   /// subscription import cannot leave orphaned nodes behind.
   static Future<void> saveProfiles(List<Map<String, dynamic>> profiles) async {
-    final written = <File>[];
+    final previous = <String, List<int>?>{};
     final dir = await _profilesDir();
     try {
       for (final p in profiles) {
@@ -145,14 +171,24 @@ class LocalStore {
           throw ArgumentError('profile id must be an int, got ${id.runtimeType}');
         }
         final f = File('${dir.path}/$id.json');
-        final existed = await f.exists();
+        final path = f.path;
+        if (!previous.containsKey(path)) {
+          previous[path] = await f.exists() ? await f.readAsBytes() : null;
+        }
         await _writeAtomic(f, _encoder.convert(p));
-        if (!existed) written.add(f);
       }
     } catch (_) {
-      for (final f in written) {
+      // Restore both newly created files and files that were overwritten. A
+      // batch import must be all-or-nothing even when an ID is reused.
+      for (final entry in previous.entries) {
         try {
-          if (await f.exists()) await f.delete();
+          final old = entry.value;
+          final file = File(entry.key);
+          if (old == null) {
+            if (await file.exists()) await file.delete();
+          } else {
+            await _writeAtomicBytes(file, old);
+          }
         } catch (_) {}
       }
       rethrow;
@@ -235,14 +271,31 @@ class LocalStore {
       _allocateIds(await _groupsDir(), count);
 
   static Future<List<int>> _allocateIds(Directory dir, int count) async {
-    var maxId = 0;
-    await for (final f in dir.list()) {
-      if (f is! File || !f.path.endsWith('.json')) continue;
-      final stem = _baseName(f.path);
-      final id = int.tryParse(stem.substring(0, stem.length - 5));
-      if (id != null && id > maxId) maxId = id;
+    final previous = _idLock;
+    final gate = Completer<void>();
+    _idLock = gate.future;
+    await previous;
+    try {
+      var maxId = 0;
+      await for (final f in dir.list()) {
+        if (f is! File || !f.path.endsWith('.json')) continue;
+        final stem = _baseName(f.path);
+        final id = int.tryParse(stem.substring(0, stem.length - 5));
+        if (id != null && id > maxId) maxId = id;
+      }
+      final isProfiles = _baseName(dir.path) == 'profiles';
+      final reserved = isProfiles ? _nextProfileId : _nextGroupId;
+      final first = (reserved ?? (maxId + 1)).clamp(maxId + 1, 0x7fffffff).toInt();
+      final next = first + count;
+      if (isProfiles) {
+        _nextProfileId = next;
+      } else {
+        _nextGroupId = next;
+      }
+      return List<int>.generate(count, (i) => first + i);
+    } finally {
+      gate.complete();
     }
-    return List<int>.generate(count, (i) => maxId + 1 + i);
   }
 
   /// Absolute path of the data directory (exposed for diagnostics).

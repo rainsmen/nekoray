@@ -33,23 +33,55 @@ type BaseServer struct {
 }
 
 // shutdown is installed by RunCore so Exit can stop the server gracefully
-// instead of calling os.Exit from inside a request handler.
+// instead of calling os.Exit from inside a request handler. The optional
+// cleanup hook lets the embedding application release resources (for example,
+// a running sing-box instance) before the process exits.
 var shutdown struct {
 	sync.Mutex
-	fn func()
+	fn        func()
+	cleanup   func()
+	requested bool
+}
+
+// SetShutdownHook registers a process-resource cleanup callback for Exit. The
+// callback is invoked at most once, after the gRPC server has stopped. It is
+// intentionally separate from RunCore's server callback so embedders can wire
+// their instance lifecycle without exposing the grpc.Server itself.
+func SetShutdownHook(fn func()) {
+	shutdown.Lock()
+	shutdown.cleanup = fn
+	shutdown.Unlock()
 }
 
 func (s *BaseServer) Exit(ctx context.Context, in *gen.EmptyReq) (*gen.EmptyResp, error) {
 	shutdown.Lock()
 	fn := shutdown.fn
+	cleanup := shutdown.cleanup
+	// Multiple callers may race to exit. Only the first one may schedule the
+	// callbacks, otherwise cleanup can run concurrently or twice.
+	if fn != nil || cleanup != nil {
+		if shutdown.requested {
+			fn = nil
+			cleanup = nil
+		} else {
+			shutdown.requested = true
+		}
+	}
 	shutdown.Unlock()
 
 	// Return the response first, then tear down, so the caller is not left
-	// with a broken connection instead of an acknowledgement.
-	if fn != nil {
+	// with a broken connection instead of an acknowledgement. GracefulStop is
+	// called before the application hook so in-flight RPCs can finish while
+	// their resources are still available.
+	if fn != nil || cleanup != nil {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			fn()
+			if fn != nil {
+				fn()
+			}
+			if cleanup != nil {
+				cleanup()
+			}
 		}()
 	}
 	return &gen.EmptyResp{}, nil
@@ -139,6 +171,7 @@ func RunCore(token string, port int, debug bool, server gen.LibcoreServiceServer
 
 	shutdown.Lock()
 	shutdown.fn = s.GracefulStop
+	shutdown.requested = false
 	shutdown.Unlock()
 
 	// Report the actual port so a caller that passed 0 can discover it.

@@ -22,9 +22,9 @@ const (
 func getBetweenStr(str, start, end string) string {
 	n := strings.Index(str, start)
 	if n == -1 {
-		n = 0
+		return ""
 	}
-	str = string([]byte(str)[n:])
+	str = str[n:]
 	m := strings.Index(str, end)
 	if m == -1 {
 		m = len(str)
@@ -57,36 +57,47 @@ func DoFullTest(ctx context.Context, in *gen.TestReq, instance interface{}) (out
 	// UDP Latency
 	var udpLatency string
 	if in.FullUdpLatency {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-		result := make(chan string)
+		udpCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		result := make(chan string, 1)
 
 		go func() {
-			var startTime = time.Now()
-			pc, err := udpDial(ctx, instance, "8.8.8.8:53")
-			if err == nil {
+			startTime := time.Now()
+			pc, err := udpDial(udpCtx, instance, "8.8.8.8:53")
+			if err == nil && pc != nil {
 				defer pc.Close()
-				dnsPacket, _ := hex.DecodeString("0000010000010000000000000377777706676f6f676c6503636f6d0000010001")
-				_, err = pc.Write(dnsPacket)
-				if err == nil {
-					var buf [1400]byte
-					_, err = pc.Read(buf[:])
+				// Context cancellation does not interrupt Read on every net.Conn
+				// implementation, so bound the read itself as well.
+				if deadline, ok := udpCtx.Deadline(); ok {
+					_ = pc.SetDeadline(deadline)
 				}
+				dnsPacket, decodeErr := hex.DecodeString("0000010000010000000000000377777706676f6f676c6503636f6d0000010001")
+				if decodeErr != nil {
+					err = decodeErr
+				} else {
+					_, err = pc.Write(dnsPacket)
+					if err == nil {
+						var buf [1400]byte
+						_, err = pc.Read(buf[:])
+					}
+				}
+			} else if err == nil {
+				err = fmt.Errorf("UDP dial returned a nil connection")
 			}
+			resultValue := "Error"
 			if err == nil {
-				var endTime = time.Now()
-				result <- fmt.Sprintf("%dms", endTime.Sub(startTime).Abs().Milliseconds())
+				resultValue = fmt.Sprintf("%dms", time.Since(startTime).Abs().Milliseconds())
 			} else {
 				log.Println("UDP Latency test error:", err)
-				result <- "Error"
 			}
-			close(result)
+			// Buffered result ensures the worker can finish even when the
+			// caller has already observed the timeout.
+			result <- resultValue
 		}()
 
 		select {
-		case <-ctx.Done():
+		case udpLatency = <-result:
+		case <-udpCtx.Done():
 			udpLatency = "Timeout"
-		case r := <-result:
-			udpLatency = r
 		}
 		cancel()
 	}
@@ -105,10 +116,14 @@ func DoFullTest(ctx context.Context, in *gen.TestReq, instance interface{}) (out
 	var out_ip string
 	if in.FullInOut {
 		resp, err := httpClient.Get("https://www.cloudflare.com/cdn-cgi/trace")
-		if err == nil {
-			b, _ := io.ReadAll(resp.Body)
-			out_ip = getBetweenStr(string(b), "ip=", "\n")
-			resp.Body.Close()
+		if err == nil && resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+			b, readErr := io.ReadAll(resp.Body)
+			if readErr == nil {
+				out_ip = getBetweenStr(string(b), "ip=", "\n")
+			} else {
+				out_ip = "Error"
+			}
 		} else {
 			out_ip = "Error"
 		}
@@ -117,45 +132,51 @@ func DoFullTest(ctx context.Context, in *gen.TestReq, instance interface{}) (out
 	// Download speed
 	var speed string
 	if in.FullSpeed {
-		if in.FullSpeedTimeout <= 0 {
-			in.FullSpeedTimeout = 30
+		timeout := in.FullSpeedTimeout
+		if timeout <= 0 {
+			timeout = 30
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(in.FullSpeedTimeout))
-		result := make(chan string)
-		var bodyClose io.Closer
+		speedCtx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(timeout))
+		result := make(chan string, 1)
 
 		go func() {
-			req, _ := http.NewRequestWithContext(ctx, "GET", in.FullSpeedUrl, nil)
-			resp, err := httpClient.Do(req)
-			if err == nil && resp != nil && resp.Body != nil {
-				bodyClose = resp.Body
-				defer resp.Body.Close()
-
-				timeStart := time.Now()
-				n, _ := io.Copy(io.Discard, resp.Body)
-				timeEnd := time.Now()
-
-				duration := math.Max(timeEnd.Sub(timeStart).Seconds(), 0.000001)
-				resultSpeed := (float64(n) / duration) / MiB
-				result <- fmt.Sprintf("%.2fMiB/s", resultSpeed)
-			} else {
-				result <- "Error"
+			req, err := http.NewRequestWithContext(speedCtx, "GET", in.FullSpeedUrl, nil)
+			if err == nil {
+				var resp *http.Response
+				resp, err = httpClient.Do(req)
+				if resp != nil && resp.Body != nil {
+					defer resp.Body.Close()
+				}
+				if err == nil && resp != nil && resp.Body != nil {
+					timeStart := time.Now()
+					n, copyErr := io.Copy(io.Discard, resp.Body)
+					timeEnd := time.Now()
+					if copyErr != nil {
+						err = copyErr
+					} else {
+						duration := math.Max(timeEnd.Sub(timeStart).Seconds(), 0.000001)
+						result <- fmt.Sprintf("%.2fMiB/s", (float64(n)/duration)/MiB)
+						return
+					}
+				} else if err == nil {
+					err = fmt.Errorf("speed test returned an empty response")
+				}
 			}
-			close(result)
+			if err != nil {
+				log.Println("Download speed test error:", err)
+			}
+			// Buffered result avoids blocking the worker after a timeout. The
+			// response body is always closed by this goroutine's defer.
+			result <- "Error"
 		}()
 
 		select {
-		case <-ctx.Done():
+		case speed = <-result:
+		case <-speedCtx.Done():
 			speed = "Timeout"
-		case s := <-result:
-			speed = s
 		}
-
 		cancel()
-		if bodyClose != nil {
-			bodyClose.Close()
-		}
 	}
 
 	fr := make([]string, 0)
@@ -198,11 +219,10 @@ func urlLatency(client *http.Client, target string, timeout int) int {
 
 // udpDial dials a UDP connection through the proxy instance if available.
 // Uses the injected factory; falls back to direct dialing.
-var udpDial func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) =
-	func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "udp", addr)
-	}
+var udpDial func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) = func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, "udp", addr)
+}
 
 // SetUdpDialFunc allows the core to inject a UDP dialer that routes
 // through the sing-box instance.

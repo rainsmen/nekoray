@@ -22,7 +22,7 @@ class TrafficPoint {
 
 /// Rolling traffic history (last 60 samples ≈ 60 seconds).
 final trafficHistoryProvider =
-    StateNotifierProvider<TrafficHistoryNotifier, List<TrafficPoint>>(
+    StateNotifierProvider.autoDispose<TrafficHistoryNotifier, List<TrafficPoint>>(
   (ref) => TrafficHistoryNotifier(ref),
 );
 

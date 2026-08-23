@@ -43,5 +43,10 @@
   "port": "Port",
   "password": "Password",
   "username": "Username",
-  "name": "Name"
+  "name": "Name",
+  "retry": "Retry",
+  "import": "Import",
+  "proxy": "Proxy",
+  "core": "Core",
+  "behavior": "Behavior"
 }

@@ -23,14 +23,14 @@ class DataMigration {
     bool dryRun = false,
   }) async {
     final report = MigrationReport();
-
     final oldRoot = Directory(oldDir);
     if (!await oldRoot.exists()) {
       report.errors.add('Source directory does not exist: $oldDir');
       return report;
     }
 
-    // --- profiles ---
+    // Parse all source objects before writing anything. This lets us allocate
+    // fresh profile/group IDs up front and keep every cross-reference valid.
     final profileMaps = <Map<String, dynamic>>[];
     final oldProfiles = Directory('$oldDir/profiles');
     if (await oldProfiles.exists()) {
@@ -49,15 +49,44 @@ class DataMigration {
       }
     }
 
-    if (profileMaps.isNotEmpty && !dryRun) {
+    final groups = <ProfileGroup>[];
+    final oldGroups = Directory('$oldDir/groups');
+    if (await oldGroups.exists()) {
+      await for (final f in oldGroups.list()) {
+        if (f is! File || !f.path.endsWith('.json')) continue;
+        try {
+          final json = jsonDecode(await f.readAsString());
+          if (json is Map<String, dynamic>) {
+            groups.add(ProfileGroup.fromJson(json));
+          } else {
+            report.errors.add('group ${f.path}: not a JSON object');
+          }
+        } catch (e) {
+          report.errors.add('group ${f.path}: $e');
+        }
+      }
+    }
+
+    final profileIdMap = <int, int>{};
+    final groupIdMap = <int, int>{};
+    if (!dryRun && groups.isNotEmpty) {
+      final ids = await LocalStore.allocateGroupIds(groups.length);
+      for (var i = 0; i < groups.length; i++) {
+        groupIdMap[groups[i].id] = ids[i];
+      }
+    }
+
+    var profilesReady = dryRun || profileMaps.isEmpty;
+    if (!dryRun && profileMaps.isNotEmpty) {
       try {
         final ids = await LocalStore.allocateProfileIds(profileMaps.length);
         final entities = <Map<String, dynamic>>[];
         for (var i = 0; i < profileMaps.length; i++) {
           final e = ProxyEntity.fromJson(profileMaps[i]);
+          profileIdMap[e.id] = ids[i];
           entities.add(ProxyEntity(
             id: ids[i],
-            gid: e.gid,
+            gid: groupIdMap[e.gid] ?? e.gid,
             type: e.type,
             bean: e.bean,
             latency: e.latency,
@@ -66,27 +95,37 @@ class DataMigration {
         await LocalStore.saveProfiles(entities);
         report.profiles = entities.length;
       } catch (e) {
+        profilesReady = false;
         report.errors.add('writing profiles: $e');
       }
     } else {
       report.profiles = profileMaps.length;
     }
 
-    // --- groups ---
-    final oldGroups = Directory('$oldDir/groups');
-    if (await oldGroups.exists()) {
-      await for (final f in oldGroups.list()) {
-        if (f is! File || !f.path.endsWith('.json')) continue;
+    // Do not write groups if the profile batch failed: otherwise their order
+    // and front-proxy references would point at files that were not imported.
+    if (profilesReady) {
+      for (final group in groups) {
         try {
-          final json = jsonDecode(await f.readAsString());
-          if (json is Map<String, dynamic>) {
-            if (!dryRun) {
-              await LocalStore.saveGroup(ProfileGroup.fromJson(json).toJson());
-            }
-            report.groups++;
-          }
+          final remappedOrder = group.order
+              .map((id) => profileIdMap[id])
+              .whereType<int>()
+              .toList();
+          final migrated = ProfileGroup(
+            id: groupIdMap[group.id] ?? group.id,
+            archive: group.archive,
+            name: group.name,
+            url: group.url,
+            info: group.info,
+            subLastUpdate: group.subLastUpdate,
+            frontProxyId: profileIdMap[group.frontProxyId] ?? 0,
+            skipAutoUpdate: group.skipAutoUpdate,
+            order: remappedOrder,
+          );
+          if (!dryRun) await LocalStore.saveGroup(migrated.toJson());
+          report.groups++;
         } catch (e) {
-          report.errors.add('group ${f.path}: $e');
+          report.errors.add('group ${group.id}: $e');
         }
       }
     }

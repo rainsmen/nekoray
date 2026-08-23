@@ -55,6 +55,58 @@ void main() {
     expect(loaded, isEmpty, reason: 'the successful write must be rolled back');
   });
 
+  test('a failing batch restores files that it overwrote', () async {
+    final original = ProxyEntity(
+      id: 200,
+      type: 'trojan',
+      bean: {'addr': 'original', 'port': 443},
+    ).toJson();
+    await LocalStore.saveProfile(original);
+    final replacement = ProxyEntity(
+      id: 200,
+      type: 'trojan',
+      bean: {'addr': 'replacement', 'port': 8443},
+    ).toJson();
+    final bad = {'id': 'not-an-int', 'type': 'trojan', 'bean': {}};
+
+    await expectLater(
+      LocalStore.saveProfiles([replacement, bad]),
+      throwsA(isA<ArgumentError>()),
+    );
+
+    final loaded = await LocalStore.loadProfiles();
+    expect(loaded.single['bean']['addr'], 'original');
+    expect(loaded.single['bean']['port'], 443);
+  });
+
+
+  test('a duplicate id in a failing batch restores the original once', () async {
+    final original = ProxyEntity(
+      id: 300,
+      type: 'trojan',
+      bean: {'addr': 'original', 'port': 443},
+    ).toJson();
+    await LocalStore.saveProfile(original);
+    final first = ProxyEntity(
+      id: 300,
+      type: 'trojan',
+      bean: {'addr': 'first', 'port': 1},
+    ).toJson();
+    final second = ProxyEntity(
+      id: 300,
+      type: 'trojan',
+      bean: {'addr': 'second', 'port': 2},
+    ).toJson();
+    final bad = {'id': 'not-an-int', 'type': 'trojan', 'bean': {}};
+
+    await expectLater(
+      LocalStore.saveProfiles([first, second, bad]),
+      throwsA(isA<ArgumentError>()),
+    );
+    final loaded = await LocalStore.loadProfiles();
+    expect(loaded.single['bean']['addr'], 'original');
+  });
+
   test('corrupt files are reported rather than silently dropped', () async {
     await LocalStore.saveProfile(
         ProxyEntity(id: 1, type: 'trojan', bean: {'addr': 'a', 'port': 1}).toJson());

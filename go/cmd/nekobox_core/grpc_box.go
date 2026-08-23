@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 
 	"grpc_server"
 	"grpc_server/gen"
@@ -17,6 +18,33 @@ import (
 
 type server struct {
 	grpc_server.BaseServer
+}
+
+// resolveProxyUDPDialer routes full-test UDP probes through the running box.
+// The grpc_server package intentionally accepts interface{} here to avoid a
+// direct sing-box dependency, so reject unexpected instance values explicitly.
+func resolveProxyUDPDialer(ctx context.Context, instance interface{}, addr string) (net.Conn, error) {
+	b, ok := instance.(*box.Box)
+	if !ok || b == nil {
+		return nil, errors.New("UDP test requires a running sing-box instance")
+	}
+	return dialThroughBox(ctx, b, "udp", addr)
+}
+
+// shutdownCoreInstance releases the active sing-box instance when the gRPC
+// Exit RPC requests process shutdown.
+func shutdownCoreInstance() {
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
+	if instanceCancel != nil {
+		instanceCancel()
+	}
+	if instance != nil {
+		instance.Close()
+	}
+	instance = nil
+	instanceCancel = nil
+	instanceCtx = nil
 }
 
 // Start loads the sing-box config and starts a new instance.

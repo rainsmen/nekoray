@@ -14,7 +14,11 @@ enum FieldType { text, number, password, combo, bool_, multiline }
 enum FieldGroup { bean, stream }
 
 class FieldSchema {
+  /// Storage key inside the bean/stream JSON.
   final String key;
+  /// Optional unique key used by the flat form state. This is needed when a
+  /// bean field and a nested stream field legitimately share the same JSON key.
+  final String? formKey;
   final String label;
   final FieldType type;
   final FieldGroup group;
@@ -26,6 +30,7 @@ class FieldSchema {
     this.key,
     this.label,
     this.type, {
+    this.formKey,
     this.group = FieldGroup.bean,
     this.options,
     this.hint,
@@ -33,6 +38,7 @@ class FieldSchema {
   });
 
   bool get multiline => type == FieldType.multiline;
+  String get inputKey => formKey ?? key;
 }
 
 /// Fields shared by every protocol.
@@ -70,6 +76,7 @@ final protocolSchemas = <String, List<FieldSchema>>{
     const FieldSchema('id', 'UUID', FieldType.text, required: true),
     const FieldSchema('aid', 'Alter ID', FieldType.number),
     const FieldSchema('sec', 'Encryption', FieldType.combo,
+        formKey: 'vmess_encryption',
         options: ['auto', 'aes-128-gcm', 'chacha20-ietf-poly1305', 'none', 'zero']),
     ..._stream,
   ],

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/generated/libcore.pb.dart';
 import '../../../core/grpc/grpc_provider.dart';
+import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
@@ -74,6 +75,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(i18nProvider);
     final tab = ref.watch(homeTabProvider);
     void select(int i) =>
         ref.read(homeTabProvider.notifier).state = HomePageTab.values[i];
@@ -86,14 +88,12 @@ class _HomePageState extends ConsumerState<HomePage> {
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab.index,
           onDestinationSelected: select,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.list_outlined), label: 'Nodes'),
-            NavigationDestination(icon: Icon(Icons.route_outlined), label: 'Routing'),
-            NavigationDestination(icon: Icon(Icons.dns_outlined), label: 'DNS'),
-            NavigationDestination(
-                icon: Icon(Icons.device_hub_outlined), label: 'Traffic'),
-            NavigationDestination(
-                icon: Icon(Icons.settings_outlined), label: 'Settings'),
+          destinations: [
+            NavigationDestination(icon: const Icon(Icons.list_outlined), label: I18n.t('profiles')),
+            NavigationDestination(icon: const Icon(Icons.route_outlined), label: I18n.t('routing')),
+            NavigationDestination(icon: const Icon(Icons.dns_outlined), label: I18n.t('dns')),
+            NavigationDestination(icon: const Icon(Icons.device_hub_outlined), label: I18n.t('connections')),
+            NavigationDestination(icon: const Icon(Icons.settings_outlined), label: I18n.t('settings')),
           ],
         ),
       );
@@ -110,18 +110,18 @@ class _HomePageState extends ConsumerState<HomePage> {
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Icon(Icons.public, size: 32),
             ),
-            destinations: const [
+            destinations: [
               NavigationRailDestination(
-                  icon: Icon(Icons.list_outlined), label: Text('Profiles')),
+                  icon: const Icon(Icons.list_outlined), label: Text(I18n.t('profiles'))),
               NavigationRailDestination(
-                  icon: Icon(Icons.route_outlined), label: Text('Routing')),
+                  icon: const Icon(Icons.route_outlined), label: Text(I18n.t('routing'))),
               NavigationRailDestination(
-                  icon: Icon(Icons.dns_outlined), label: Text('DNS')),
+                  icon: const Icon(Icons.dns_outlined), label: Text(I18n.t('dns'))),
               NavigationRailDestination(
-                  icon: Icon(Icons.device_hub_outlined),
-                  label: Text('Connections')),
+                  icon: const Icon(Icons.device_hub_outlined),
+                  label: Text(I18n.t('connections'))),
               NavigationRailDestination(
-                  icon: Icon(Icons.settings_outlined), label: Text('Settings')),
+                  icon: const Icon(Icons.settings_outlined), label: Text(I18n.t('settings'))),
             ],
           ),
           VerticalDivider(
@@ -156,6 +156,8 @@ class _ProfilesTab extends ConsumerWidget {
     final profiles = ref.watch(filteredProfilesProvider);
     final connectedId = ref.watch(connectedProfileProvider);
     final connection = ref.watch(coreConnectionProvider);
+    final traffic = ref.watch(trafficHistoryProvider);
+    final latest = traffic.isEmpty ? null : traffic.last;
 
     return Column(
       children: [
@@ -228,7 +230,11 @@ class _ProfilesTab extends ConsumerWidget {
                   },
                 ),
         ),
-        StatusBar(connected: connectedId != 0, up: 0, down: 0),
+        StatusBar(
+          connected: connectedId != 0,
+          up: latest?.up ?? 0,
+          down: latest?.down ?? 0,
+        ),
       ],
     );
   }
@@ -280,7 +286,7 @@ class _ProfilesTab extends ConsumerWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(I18n.t('cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Import')),
@@ -331,7 +337,7 @@ class _ProfilesTab extends ConsumerWidget {
             else
               ListTile(
                 leading: const Icon(Icons.play_arrow),
-                title: const Text('Start'),
+                title: Text(I18n.t('start')),
                 onTap: () {
                   Navigator.pop(ctx);
                   _start(context, ref, profile);
@@ -339,7 +345,7 @@ class _ProfilesTab extends ConsumerWidget {
               ),
             ListTile(
               leading: const Icon(Icons.edit),
-              title: const Text('Edit'),
+              title: Text(I18n.t('edit')),
               onTap: () {
                 Navigator.pop(ctx);
                 showDialog<void>(
@@ -372,11 +378,11 @@ class _ProfilesTab extends ConsumerWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(I18n.t('cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(I18n.t('delete')),
           ),
         ],
       ),
@@ -489,7 +495,7 @@ class _CoreBanner extends ConsumerWidget {
               messenger.showSnackBar(SnackBar(content: Text(err)));
             }
           },
-          child: const Text('Retry'),
+          child: Text(I18n.t('retry')),
         ),
       ],
     );

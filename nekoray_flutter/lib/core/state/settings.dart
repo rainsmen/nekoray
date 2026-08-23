@@ -8,6 +8,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../storage/local_store.dart';
+import '../i18n.dart';
 import '../system/system_integration.dart';
 
 class AppSettings {
@@ -95,27 +96,35 @@ class AppSettings {
 }
 
 final settingsProvider =
-    StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier());
+    StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier(ref));
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
-  SettingsNotifier() : super(const AppSettings());
+  final Ref _ref;
+
+  SettingsNotifier(this._ref) : super(const AppSettings());
 
   bool _loaded = false;
   bool get isLoaded => _loaded;
 
   Future<void> load() async {
     try {
-      state = AppSettings.fromJson(await LocalStore.loadSettings());
+      final loaded = AppSettings.fromJson(await LocalStore.loadSettings());
+      final locale = supportedLocales.contains(loaded.locale) ? loaded.locale : 'zh';
+      state = loaded.copyWith(locale: locale);
+      _ref.read(localeProvider.notifier).state = locale;
+      await I18n.load(locale);
     } catch (_) {
       state = const AppSettings();
+      _ref.read(localeProvider.notifier).state = 'zh';
+      await I18n.load('zh');
     } finally {
       _loaded = true;
     }
   }
 
   Future<void> _persist(AppSettings next) async {
-    state = next;
     await LocalStore.saveSettings(next.toJson());
+    state = next;
   }
 
   Future<void> setMinimizeToTray(bool v) =>
@@ -140,7 +149,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> setLogLevel(String v) => _persist(state.copyWith(logLevel: v));
 
-  Future<void> setLocale(String v) => _persist(state.copyWith(locale: v));
+  Future<void> setLocale(String v) async {
+    final locale = supportedLocales.contains(v) ? v : 'zh';
+    await I18n.load(locale);
+    _ref.read(localeProvider.notifier).state = locale;
+    await _persist(state.copyWith(locale: locale));
+  }
 
   Future<void> setCheckPreRelease(bool v) =>
       _persist(state.copyWith(checkPreRelease: v));

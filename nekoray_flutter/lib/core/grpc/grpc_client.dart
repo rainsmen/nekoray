@@ -1,4 +1,6 @@
 // gRPC client for talking to the nekobox_core process.
+
+import 'dart:math';
 //
 // The Flutter UI never touches sing-box directly — all config building,
 // subscription parsing and stats querying go through this client.
@@ -170,6 +172,40 @@ class GrpcClient {
   /// client deadline must be larger, not smaller.
   Future<ErrorResp> updateRuleSet(UpdateRuleSetReq req) =>
       _guard(() => _client.updateRuleSet(req, options: _options(_Deadlines.slow)));
+
+  static const _updateSessionMetadata = 'nekoray-update-session';
+
+  String newUpdateSessionId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(24, (_) => random.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  CallOptions _updateOptions(Duration timeout, String sessionId) => CallOptions(
+        metadata: {
+          'nekoray_auth': _token,
+          _updateSessionMetadata: sessionId,
+        },
+        timeout: timeout,
+      );
+
+  Future<UpdateResp> checkForUpdates({
+    required String sessionId,
+    bool includePreRelease = false,
+  }) =>
+      _guard(() => _client.update(
+            UpdateReq(
+              action: UpdateAction.Check,
+              checkPreRelease: includePreRelease,
+            ),
+            options: _updateOptions(_Deadlines.normal, sessionId),
+          ));
+
+  Future<UpdateResp> downloadUpdate({required String sessionId}) =>
+      _guard(() => _client.update(
+            UpdateReq(action: UpdateAction.Download),
+            options: _updateOptions(_Deadlines.slow, sessionId),
+          ));
 
   Future<TestResp> test(TestReq req) =>
       _guard(() => _client.test(req, options: _options(_Deadlines.slow)));
