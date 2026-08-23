@@ -98,9 +98,11 @@ class CoreProcess {
 
     final token = generateToken();
     final args = <String>[
+      'nekobox',
+      '--port',
+      requestedPort.toString(),
       '--token',
       token,
-      if (requestedPort > 0) ...['--port', requestedPort.toString()],
       if (debug) '--debug',
     ];
 

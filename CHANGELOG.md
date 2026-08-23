@@ -1,5 +1,14 @@
 # Changelog
 
+## v5.0.0-beta.7 — Core Startup & Process Parameter Fix (2026-08-24)
+
+### Bug Fixes
+- **Core Startup Exit Code 2 Fix**:
+  - `nekobox_core`: Added flexible argument parsing supporting both `nekobox` subcommand prefix and direct flags (`--port`, `--token`, `--debug`).
+  - `nekoray_flutter`: Restored `'nekobox'` subcommand in `CoreProcess._start` and ensured `--port` is always explicitly passed (enabling ephemeral port binding with `--port 0`).
+  - Fixed Windows/Linux child process startup failure `proxy core is not running:core exited with code 2 during startup`.
+  - Added unit test coverage in `go/cmd/nekobox_core/main_test.go` for argument parsing.
+
 ## v5.0.0-beta.3 — New Protocols + Codebase Cleanup (2026-08-23)
 
 ### New Features
