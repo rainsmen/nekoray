@@ -30,6 +30,14 @@ func GenerateLink(ent *nekokfmt.ProxyEntity, format string) (string, error) {
 		return genShadowsocksLink(b), nil
 	case *nekokfmt.QUICBean:
 		return genQUICLink(b), nil
+	case *nekokfmt.NaiveBean:
+		return genNaiveLink(b), nil
+	case *nekokfmt.AnyTLSBean:
+		return genAnyTLSLink(b), nil
+	case *nekokfmt.SSHBean:
+		return genSSHLink(b), nil
+	case *nekokfmt.WireGuardBean:
+		return genWireGuardLink(b), nil
 	default:
 		return "", fmt.Errorf("unsupported bean type for link generation")
 	}
@@ -245,6 +253,112 @@ func joinHostPort(host string, port int) string {
 		return "[" + host + "]:" + strconv.Itoa(port)
 	}
 	return host + ":" + strconv.Itoa(port)
+}
+
+func genNaiveLink(b *nekokfmt.NaiveBean) string {
+	u := &url.URL{Scheme: "naive+https"}
+	u.Host = joinHostPort(b.ServerAddress, b.ServerPort)
+	u.User = url.UserPassword(b.Username, b.Password)
+	q := url.Values{}
+	if b.Sni != "" {
+		q.Set("sni", b.Sni)
+	}
+	if b.AllowInsecure {
+		q.Set("allow_insecure", "1")
+	}
+	if b.Alpn != "" {
+		q.Set("alpn", b.Alpn)
+	}
+	if b.QUIC {
+		q.Set("quic", "1")
+	}
+	u.RawQuery = q.Encode()
+	if b.Name != "" {
+		u.Fragment = b.Name
+	}
+	return u.String()
+}
+
+func genAnyTLSLink(b *nekokfmt.AnyTLSBean) string {
+	u := &url.URL{Scheme: "anytls"}
+	u.Host = joinHostPort(b.ServerAddress, b.ServerPort)
+	u.User = url.User(b.Password)
+	q := url.Values{}
+	if b.Sni != "" {
+		q.Set("sni", b.Sni)
+	}
+	if b.AllowInsecure {
+		q.Set("allow_insecure", "1")
+	}
+	if b.MinIdleSession > 0 {
+		q.Set("min_idle_session", strconv.Itoa(b.MinIdleSession))
+	}
+	if b.ClientMetadata != "" {
+		q.Set("client_metadata", b.ClientMetadata)
+	}
+	u.RawQuery = q.Encode()
+	if b.Name != "" {
+		u.Fragment = b.Name
+	}
+	return u.String()
+}
+
+func genSSHLink(b *nekokfmt.SSHBean) string {
+	u := &url.URL{Scheme: "ssh"}
+	u.Host = joinHostPort(b.ServerAddress, b.ServerPort)
+	if b.Password != "" {
+		u.User = url.UserPassword(b.User, b.Password)
+	} else {
+		u.User = url.User(b.User)
+	}
+	q := url.Values{}
+	if b.PrivateKey != "" {
+		q.Set("private_key", b.PrivateKey)
+	}
+	if b.HostKeyAlgorithms != "" {
+		q.Set("host_key_algorithms", b.HostKeyAlgorithms)
+	}
+	if b.ClientVersion != "" {
+		q.Set("client_version", b.ClientVersion)
+	}
+	u.RawQuery = q.Encode()
+	if b.Name != "" {
+		u.Fragment = b.Name
+	}
+	return u.String()
+}
+
+func genWireGuardLink(b *nekokfmt.WireGuardBean) string {
+	u := &url.URL{Scheme: "wireguard"}
+	u.Host = joinHostPort(b.ServerAddress, b.ServerPort)
+	u.User = url.User(b.PrivateKey)
+	q := url.Values{}
+	if b.Address != "" {
+		q.Set("address", b.Address)
+	}
+	if b.PeerPublicKey != "" {
+		q.Set("public_key", b.PeerPublicKey)
+	}
+	if b.PeerPreSharedKey != "" {
+		q.Set("pre_shared_key", b.PeerPreSharedKey)
+	}
+	if b.PeerAllowedIPs != "" {
+		q.Set("allowed_ips", b.PeerAllowedIPs)
+	}
+	if b.MTU > 0 {
+		q.Set("mtu", strconv.Itoa(b.MTU))
+	}
+	if b.PeerKeepAlive > 0 {
+		q.Set("keepalive", strconv.Itoa(b.PeerKeepAlive))
+	}
+	if b.PeerReserved != "" {
+		q.Set("reserved", b.PeerReserved)
+	}
+	u.RawQuery = q.Encode()
+	if b.Name != "" {
+		u.Fragment = b.Name
+	}
+	return u.String()
 }
 
 // --- SIP008 ---

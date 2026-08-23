@@ -147,6 +147,22 @@ func (p *ProxyEntity) DecodeBean() (interface{}, error) {
 		var b ChainBean
 		err := json.Unmarshal(p.Bean, &b)
 		return &b, err
+	case string(BeanNaive):
+		var b NaiveBean
+		err := json.Unmarshal(p.Bean, &b)
+		return &b, err
+	case string(BeanAnyTLS):
+		var b AnyTLSBean
+		err := json.Unmarshal(p.Bean, &b)
+		return &b, err
+	case string(BeanSSH):
+		var b SSHBean
+		err := json.Unmarshal(p.Bean, &b)
+		return &b, err
+	case string(BeanWireGuard):
+		var b WireGuardBean
+		err := json.Unmarshal(p.Bean, &b)
+		return &b, err
 	default:
 		return nil, &UnknownBeanTypeError{Type: p.Type}
 	}

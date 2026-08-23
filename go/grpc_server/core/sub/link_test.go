@@ -293,3 +293,133 @@ func TestEntityRoundtrip(t *testing.T) {
 		t.Errorf("roundtrip type mismatch")
 	}
 }
+
+func TestParseNaiveLink(t *testing.T) {
+	link := "naive+https://user1:pass1@naive.example.com:443?sni=naive.example.com"
+	r := ParseLink(link)
+	if r.Error != "" {
+		t.Fatalf("parse error: %s", r.Error)
+	}
+	if r.Profile.Type != "naive" {
+		t.Fatalf("expected type naive, got %s", r.Profile.Type)
+	}
+	bean, err := r.Profile.DecodeBean()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	b := bean.(*nekokfmt.NaiveBean)
+	if b.Username != "user1" {
+		t.Errorf("expected username user1, got %s", b.Username)
+	}
+	if b.Password != "pass1" {
+		t.Errorf("expected password pass1, got %s", b.Password)
+	}
+	if b.ServerAddress != "naive.example.com" {
+		t.Errorf("expected server naive.example.com, got %s", b.ServerAddress)
+	}
+	if b.ServerPort != 443 {
+		t.Errorf("expected port 443, got %d", b.ServerPort)
+	}
+}
+
+func TestParseAnyTLSLink(t *testing.T) {
+	link := "anytls://secret@anytls.example.com:443?sni=anytls.example.com&min_idle_session=5"
+	r := ParseLink(link)
+	if r.Error != "" {
+		t.Fatalf("parse error: %s", r.Error)
+	}
+	if r.Profile.Type != "anytls" {
+		t.Fatalf("expected type anytls, got %s", r.Profile.Type)
+	}
+	bean, err := r.Profile.DecodeBean()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	b := bean.(*nekokfmt.AnyTLSBean)
+	if b.Password != "secret" {
+		t.Errorf("expected password secret, got %s", b.Password)
+	}
+	if b.MinIdleSession != 5 {
+		t.Errorf("expected min_idle_session 5, got %d", b.MinIdleSession)
+	}
+}
+
+func TestParseSSHLink(t *testing.T) {
+	link := "ssh://root:toor@ssh.example.com:22"
+	r := ParseLink(link)
+	if r.Error != "" {
+		t.Fatalf("parse error: %s", r.Error)
+	}
+	if r.Profile.Type != "ssh" {
+		t.Fatalf("expected type ssh, got %s", r.Profile.Type)
+	}
+	bean, err := r.Profile.DecodeBean()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	b := bean.(*nekokfmt.SSHBean)
+	if b.User != "root" {
+		t.Errorf("expected user root, got %s", b.User)
+	}
+	if b.Password != "toor" {
+		t.Errorf("expected password toor, got %s", b.Password)
+	}
+	if b.ServerPort != 22 {
+		t.Errorf("expected port 22, got %d", b.ServerPort)
+	}
+}
+
+func TestParseWireGuardLink(t *testing.T) {
+	link := "wireguard://abc123@wg.example.com:51820?address=10.0.0.2/32&public_key=pubkey&allowed_ips=0.0.0.0/0,::/0&mtu=1280"
+	r := ParseLink(link)
+	if r.Error != "" {
+		t.Fatalf("parse error: %s", r.Error)
+	}
+	if r.Profile.Type != "wireguard" {
+		t.Fatalf("expected type wireguard, got %s", r.Profile.Type)
+	}
+	bean, err := r.Profile.DecodeBean()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	b := bean.(*nekokfmt.WireGuardBean)
+	if b.PrivateKey != "abc123" {
+		t.Errorf("expected private key abc123, got %s", b.PrivateKey)
+	}
+	if b.PeerPublicKey != "pubkey" {
+		t.Errorf("expected public key pubkey, got %s", b.PeerPublicKey)
+	}
+	if b.MTU != 1280 {
+		t.Errorf("expected mtu 1280, got %d", b.MTU)
+	}
+}
+
+func TestGenNaiveLink(t *testing.T) {
+	bean := &nekokfmt.NaiveBean{
+		AbstractBean: nekokfmt.AbstractBean{
+			Name:          "test",
+			ServerAddress: "naive.example.com",
+			ServerPort:    443,
+		},
+		Username: "user1",
+		Password: "pass1",
+		Sni:      "naive.example.com",
+	}
+	ent := newEntity("naive", bean)
+	link, err := GenerateLink(ent, "nekoray")
+	if err != nil {
+		t.Fatalf("gen error: %v", err)
+	}
+	if !strings.HasPrefix(link, "naive+https://") {
+		t.Errorf("expected naive+https scheme, got %s", link)
+	}
+	r := ParseLink(link)
+	if r.Error != "" {
+		t.Fatalf("roundtrip parse error: %s", r.Error)
+	}
+	b, _ := r.Profile.DecodeBean()
+	rb := b.(*nekokfmt.NaiveBean)
+	if rb.Username != "user1" {
+		t.Errorf("roundtrip username mismatch: %s", rb.Username)
+	}
+}

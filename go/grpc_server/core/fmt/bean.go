@@ -158,3 +158,75 @@ type ChainBean struct {
 	AbstractBean
 	List []int `json:"list"`
 }
+
+// NaiveBean represents the sing-box naive outbound.
+// sing-box v1.13 supports naive natively (NaiveOutboundOptions).
+type NaiveBean struct {
+	AbstractBean
+	Username string `json:"username"`
+	Password string `json:"password"`
+
+	// TLS
+	Sni           string `json:"sni"`
+	AllowInsecure bool   `json:"allowInsecure"`
+	Alpn          string `json:"alpn"`
+
+	// Naive-specific
+	InsecureConcurrency int  `json:"insecureConcurrency"`
+	UDPOverTCP           bool `json:"udpOverTcp"`
+	QUIC                 bool `json:"quic"`
+}
+
+// AnyTLSBean represents the sing-box anytls outbound.
+// sing-box v1.13 supports anytls natively (AnyTLSOutboundOptions).
+type AnyTLSBean struct {
+	AbstractBean
+	Password string `json:"password"`
+
+	// TLS
+	Sni           string `json:"sni"`
+	AllowInsecure bool   `json:"allowInsecure"`
+	Alpn          string `json:"alpn"`
+
+	// AnyTLS-specific (optional tuning)
+	IdleSessionCheckInterval string `json:"idleSessionCheckInterval"`
+	IdleSessionTimeout        string `json:"idleSessionTimeout"`
+	MinIdleSession            int    `json:"minIdleSession"`
+	ClientMetadata            string `json:"clientMetadata"`
+}
+
+// SSHBean represents the sing-box ssh outbound.
+// sing-box v1.13 supports ssh natively (SSHOutboundOptions).
+type SSHBean struct {
+	AbstractBean
+	User                 string `json:"user"`
+	Password             string `json:"password"`
+	PrivateKey           string `json:"privateKey"`
+	PrivateKeyPath       string `json:"privateKeyPath"`
+	PrivateKeyPassphrase string `json:"privateKeyPassphrase"`
+	HostKeyAlgorithms    string `json:"hostKeyAlgorithms"`
+	ClientVersion        string `json:"clientVersion"`
+}
+
+// WireGuardBean represents the sing-box wireguard outbound.
+// sing-box v1.13 supports wireguard natively (WireGuardEndpointOptions).
+type WireGuardBean struct {
+	AbstractBean
+	System        bool   `json:"system"`
+	InterfaceName string `json:"interfaceName"`
+	MTU           int    `json:"mtu"`
+	Address       string `json:"address"`       // comma-separated
+	PrivateKey    string `json:"privateKey"`
+	ListenPort    int    `json:"listenPort"`
+	UDPTimeout    string `json:"udpTimeout"`
+	Workers       int    `json:"workers"`
+
+	// Peer
+	PeerAddress              string `json:"peerAddress"`
+	PeerPort                 int    `json:"peerPort"`
+	PeerPublicKey            string `json:"peerPublicKey"`
+	PeerPreSharedKey         string `json:"peerPreSharedKey"`
+	PeerAllowedIPs           string `json:"peerAllowedIPs"` // comma-separated
+	PeerKeepAlive            int    `json:"peerKeepAlive"`
+	PeerReserved             string `json:"peerReserved"`   // comma-separated uint8
+}

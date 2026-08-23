@@ -1,54 +1,93 @@
 # nekoray 架构说明
 
-## 当前架构（v4.x，C++/Qt）
+## 当前架构（v5.x，Flutter + Go core）
 
 ```
-┌──────────────┐   gRPC(HTTP/2手写)   ┌──────────────┐
-│  Qt Widgets   │◄──────────────────►│ nekobox_core │► sing-box
-│  (C++)        │   QNetworkAccess    │   (Go)       │
-└──────────────┘                     └──────────────┘
+┌─────────────────────────────────────────────┐
+│  Flutter UI (Dart)                           │
+│  Material 3 · Riverpod · gRPC client        │
+│  - 节点管理 / 订阅 / 路由 / DNS / 设置        │
+│  - 平台插件 (系统代理/TUN/托盘)              │
+└──────────────────┬──────────────────────────┘
+                   │ gRPC (localhost)
+┌──────────────────▼──────────────────────────┐
+│  nekobox_core (Go)                           │
+│  sing-box v1.13.19 · ConfigBuilder           │
+│  订阅解析 · rule_set · 连接管理              │
+└─────────────────────────────────────────────┘
 ```
 
-- **UI 层**：C++ / Qt Widgets，业务逻辑全在 C++ 层（ConfigBuilder/JsonStore/订阅/路由）
-- **IPC**：手写 gRPC over HTTP/2（`rpc/gRPC.cpp`）
-- **核心**：Go `nekobox_core` 通过 gRPC 桥接 sing-box
+- **UI 层**：Flutter（Dart），仅做渲染 + 交互 + 本地 JSON 存储
+- **IPC**：官方 gRPC（go-grpc ↔ grpc-dart），通过 localhost
+- **核心**：Go `nekobox_core`，所有代理逻辑在此执行
 
-## 目标架构（v5.x，Flutter）
+## 组件
 
-```
-┌──────────────┐  gRPC(官方库)   ┌──────────────┐
-│ Flutter UI    │◄───────────────►│ nekobox_core │► sing-box
-│  (Dart)       │                 │   (Go, 扩展)  │
-│  - 状态管理    │                 │  +ConfigBuild│
-│  - 数据模型    │                 │  +订阅更新    │
-│  - 平台插件    │                 │  +路由生成    │
-└──────────────┘                 └──────────────┘
-```
+### Go Core (`go/`)
 
-- **UI 层**：Flutter（Dart），仅做渲染+交互+本地缓存
-- **IPC**：官方 gRPC Dart 库
-- **核心**：Go `nekobox_core` 扩展，业务逻辑下沉（ConfigBuilder/订阅/路由）
+| 包 | 说明 |
+|---|---|
+| `cmd/nekobox_core` | 核心进程入口，管理 sing-box 实例 |
+| `cmd/migrator` | 数据迁移工具（从旧 C++ nekoray 导入） |
+| `grpc_server` | gRPC 服务端 |
+| `grpc_server/core/config` | ConfigBuilder（sing-box 配置生成） |
+| `grpc_server/core/fmt` | Bean 数据模型（协议实体） |
+| `grpc_server/core/sub` | 订阅解析 + 链接生成 |
+| `grpc_server/core/ruleset` | rule_set 远程规则集管理 |
 
-## 迁移阶段
-
-详见 [Flutter迁移实施计划.md](./Flutter迁移实施计划.md)
-
-- **阶段零**：仓库 + CI 搭建
-- **阶段一**：Go core 升级 + 业务下沉（C++ UI 不变）
-- **阶段二**：Flutter 桌面端重写
-- **阶段三**：移动端适配（可选）
-
-## 关键目录
+### Flutter UI (`nekoray_flutter/`)
 
 | 目录 | 说明 |
 |---|---|
-| `main/` | C++ 主程序（过渡期保留） |
-| `db/` | C++ 数据存储 + 配置构建（阶段一下沉到 Go） |
-| `fmt/` | C++ Bean 数据模型（阶段一 Go 重建） |
-| `sub/` | C++ 订阅解析（阶段一下沉到 Go） |
-| `ui/` | C++ Qt 界面（阶段二 Flutter 重写） |
-| `rpc/` | C++ gRPC 客户端（阶段二废弃，Dart grpc 替代） |
-| `go/` | Go core（阶段一扩展） |
-| `nekoray_flutter/` | Flutter 工程（阶段二启用） |
-| `libs/` | 构建脚本 |
-| `res/` | 资源文件 |
+| `lib/core/grpc` | gRPC 客户端 + Riverpod providers |
+| `lib/core/models` | Dart 数据模型 |
+| `lib/core/storage` | JSON 文件存储 + 数据迁移 |
+| `lib/core/state` | Riverpod 状态管理 |
+| `lib/core/i18n` | 国际化（JSON 加载器） |
+| `lib/ui/pages` | 各功能页面 |
+| `lib/ui/schema` | 协议表单 schema（��态渲染） |
+| `lib/ui/widgets` | 可复用组件 |
+
+## 支持的代理协议
+
+Go core 使用 sing-box v1.13.19 原生构建器，支持以下协议：
+
+| 协议 | Bean 类型 | 说明 |
+|---|---|---|
+| Shadowsocks | `ShadowSocksBean` | SS + SIP003 插件 |
+| VMess | `VMessBean` | V2Ray VMess |
+| VLESS | `TrojanVLESSBean` | Reality / xtls-rprx-vision |
+| Trojan | `TrojanVLESSBean` | |
+| Hysteria2 | `QUICBean` | QUIC 协议 |
+| TUIC | `QUICBean` | QUIC 协议 |
+| **NaiveProxy** | `NaiveBean` | sing-box 原生支持 |
+| **AnyTLS** | `AnyTLSBean` | sing-box 原生支持 |
+| **SSH** | `SSHBean` | sing-box 原生支持 |
+| **WireGuard** | `WireGuardBean` | sing-box 原生支持 |
+| SOCKS / HTTP | `SocksHttpBean` | SOCKS4/5, HTTP(S) |
+| Custom | `CustomBean` | 自定义 sing-box JSON |
+| Chain | `ChainBean` | 前置代理链 |
+
+## 构建标签
+
+Go core 编译时使用以下 sing-box 构建标签：
+
+```
+with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls
+```
+
+> ⚠️ 不要使用 `with_ech`（在 v1.13.19 上会导致编译失败）
+
+## CI/CD
+
+所有构建通过 GitHub Actions：
+
+| 工作流 | 说明 |
+|---|---|
+| `build-go-core.yml` | 4 平台 Go core 交叉编译 |
+| `build-flutter.yml` | 3 桌面端 Flutter 构建 |
+| `build-mobile.yml` | Android 构建 |
+| `lint-test.yml` | Go vet + Go test + Flutter analyze |
+| `generate-proto.yml` | Go + Dart gRPC 存根生成 |
+| `sync-go-sum.yml` | go mod tidy 自动同步 |
+| `release.yml` | 一键发布（6 产物） |
