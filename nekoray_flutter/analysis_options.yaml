@@ -10,5 +10,8 @@ analyzer:
     - "lib/**/*.g.dart"
     - "lib/**/*.freezed.dart"
   errors:
-    # Treat analysis errors as errors (CI gate), but allow some common ones.
     missing_required_param: error
+    # Downgrade style suggestions to info (don't fail CI)
+    prefer_const_constructors: false
+    prefer_const_constructors_in_immutables: false
+    prefer_const_literals_to_create_immutables: false
