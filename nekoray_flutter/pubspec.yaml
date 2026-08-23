@@ -30,9 +30,6 @@ dependencies:
   tray_manager: ^0.2.3
   window_manager: ^0.4.3
 
-  # QR
-  qr_flutter: ^4.1.0
-
   # Utils
   collection: ^1.18.0
 
@@ -46,3 +43,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true
+  assets:
+    # Required: I18n.load reads these at runtime. Without this declaration the
+    # files are absent from release bundles and translations silently vanish.
+    - assets/l10n/

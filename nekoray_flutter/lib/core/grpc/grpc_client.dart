@@ -1,49 +1,75 @@
 // gRPC client for talking to the nekobox_core process.
 //
-// Phase-2: a thin wrapper around the generated LibcoreServiceClient. The
-// Flutter UI never touches sing-box directly — all config building,
-// subscription parsing, and stats querying go through this client.
+// The Flutter UI never touches sing-box directly — all config building,
+// subscription parsing and stats querying go through this client.
 
 import 'package:grpc/grpc.dart';
 
 import 'generated/libcore.pbgrpc.dart';
+
+/// Per-call deadlines. A single global timeout was wrong in both directions:
+/// 10s is an eternity for a stats poll and far too short for a rule_set
+/// download, which the core allows 60s for.
+class _Deadlines {
+  static const fast = Duration(seconds: 5); // stats, stop
+  static const normal = Duration(seconds: 15); // build, parse
+  static const slow = Duration(seconds: 90); // downloads, tests
+}
 
 class GrpcClient {
   GrpcClient();
 
   ClientChannel? _channel;
   LibcoreServiceClient? _stub;
+  String _token = '';
 
-  bool get isConnected => _channel != null;
+  /// True only after a successful call; a non-null channel proves nothing,
+  /// since the core may have exited since it was opened.
+  bool _healthy = false;
+  bool get isConnected => _channel != null && _healthy;
 
-  /// Connects to the local nekobox_core gRPC endpoint.
+  /// Connects to the local nekobox_core gRPC endpoint and verifies the
+  /// connection with a real authenticated call.
   Future<void> connect({
     String host = '127.0.0.1',
-    int port = 19821,
-    String token = '',
+    required int port,
+    required String token,
   }) async {
-    await _channel?.shutdown();
+    if (token.isEmpty) {
+      throw ArgumentError('an auth token is required — the core rejects '
+          'unauthenticated requests');
+    }
+    await disconnect();
 
     final channel = ClientChannel(
       host,
       port: port,
       options: const ChannelOptions(
-        credentials: ChannelCredentials.insecure(),
+        credentials: ChannelCredentials.insecure(), // loopback only
         idleTimeout: Duration(minutes: 5),
+        connectionTimeout: Duration(seconds: 5),
       ),
     );
 
     _channel = channel;
-    _stub = LibcoreServiceClient(
-      channel,
-      options: CallOptions(
-        metadata: token.isEmpty ? {} : {'nekoray_auth': token},
-        timeout: const Duration(seconds: 10),
-      ),
-    );
+    _token = token;
+    _stub = LibcoreServiceClient(channel, options: _options(_Deadlines.normal));
+
+    try {
+      await ping();
+      _healthy = true;
+    } catch (_) {
+      await disconnect();
+      rethrow;
+    }
   }
 
-  LibcoreServiceClient get stub {
+  CallOptions _options(Duration timeout) => CallOptions(
+        metadata: {'nekoray_auth': _token},
+        timeout: timeout,
+      );
+
+  LibcoreServiceClient get _client {
     final s = _stub;
     if (s == null) {
       throw StateError('GrpcClient not connected — call connect() first');
@@ -51,42 +77,100 @@ class GrpcClient {
     return s;
   }
 
+  /// Cheap authenticated round-trip used as a health check.
+  Future<void> ping() async {
+    await _client.listRuleSets(EmptyReq(), options: _options(_Deadlines.fast));
+  }
+
+  /// Re-checks liveness, flipping [isConnected] when the core has gone away.
+  Future<bool> checkHealth() async {
+    if (_channel == null) return false;
+    try {
+      await ping();
+      _healthy = true;
+    } catch (_) {
+      _healthy = false;
+    }
+    return _healthy;
+  }
+
   Future<void> disconnect() async {
-    await _channel?.shutdown();
+    _healthy = false;
+    final channel = _channel;
     _channel = null;
     _stub = null;
+    _token = '';
+    if (channel != null) {
+      try {
+        await channel.shutdown();
+      } catch (_) {
+        // Already broken; nothing useful to do.
+      }
+    }
+  }
+
+  /// Runs [call] and marks the connection unhealthy if the transport failed,
+  /// so the next action reconnects instead of retrying into a dead socket.
+  Future<T> _guard<T>(Future<T> Function() call) async {
+    try {
+      final result = await call();
+      _healthy = true;
+      return result;
+    } on GrpcError catch (e) {
+      if (e.code == StatusCode.unavailable ||
+          e.code == StatusCode.deadlineExceeded ||
+          e.code == StatusCode.unauthenticated) {
+        _healthy = false;
+      }
+      rethrow;
+    } catch (_) {
+      _healthy = false;
+      rethrow;
+    }
   }
 
   // --- Convenience wrappers ----------------------------------------------
 
-  Future<BuildConfigResp> buildConfig(BuildConfigReq req) {
-    return stub.buildConfig(req);
-  }
+  Future<BuildConfigResp> buildConfig(BuildConfigReq req) =>
+      _guard(() => _client.buildConfig(req, options: _options(_Deadlines.normal)));
 
-  Future<ParseSubResp> parseSubscription(ParseSubReq req) {
-    return stub.parseSubscription(req);
-  }
+  Future<ParseSubResp> parseSubscription(ParseSubReq req) =>
+      _guard(() => _client.parseSubscription(req, options: _options(_Deadlines.normal)));
 
-  Future<ShareLinkResp> generateShareLink(ShareLinkReq req) {
-    return stub.generateShareLink(req);
-  }
+  Future<ShareLinkResp> generateShareLink(ShareLinkReq req) =>
+      _guard(() => _client.generateShareLink(req, options: _options(_Deadlines.fast)));
 
-  Future<QueryStatsResp> queryStats(String tag, String direction) {
-    return stub.queryStats(QueryStatsReq(tag: tag, direct: direction));
-  }
+  Future<QueryStatsResp> queryStats(String tag, String direction) =>
+      _guard(() => _client.queryStats(
+            QueryStatsReq(tag: tag, direct: direction),
+            options: _options(_Deadlines.fast),
+          ));
 
-  Future<ErrorResp> startCore(String coreConfig,
-      {bool enableConnections = false, List<String> statsOutbounds = const []}) {
-    return stub.start(LoadConfigReq(
-      coreConfig: coreConfig,
-      enableNekorayConnections: enableConnections,
-      statsOutbounds: statsOutbounds,
-    ));
-  }
+  Future<ErrorResp> startCore(
+    String coreConfig, {
+    bool enableConnections = false,
+    List<String> statsOutbounds = const [],
+  }) =>
+      _guard(() => _client.start(
+            LoadConfigReq(
+              coreConfig: coreConfig,
+              enableNekorayConnections: enableConnections,
+              statsOutbounds: statsOutbounds,
+            ),
+            options: _options(_Deadlines.slow),
+          ));
 
-  Future<ErrorResp> stopCore() => stub.stop(EmptyReq());
+  Future<ErrorResp> stopCore() =>
+      _guard(() => _client.stop(EmptyReq(), options: _options(_Deadlines.fast)));
 
-  Future<ListRuleSetsResp> listRuleSets() => stub.listRuleSets(EmptyReq());
+  Future<ListRuleSetsResp> listRuleSets() =>
+      _guard(() => _client.listRuleSets(EmptyReq(), options: _options(_Deadlines.fast)));
 
-  Future<ErrorResp> updateRuleSet(UpdateRuleSetReq req) => stub.updateRuleSet(req);
+  /// Rule_set updates download over the network; the core allows 60s, so the
+  /// client deadline must be larger, not smaller.
+  Future<ErrorResp> updateRuleSet(UpdateRuleSetReq req) =>
+      _guard(() => _client.updateRuleSet(req, options: _options(_Deadlines.slow)));
+
+  Future<TestResp> test(TestReq req) =>
+      _guard(() => _client.test(req, options: _options(_Deadlines.slow)));
 }

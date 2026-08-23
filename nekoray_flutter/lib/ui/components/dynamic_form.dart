@@ -1,7 +1,10 @@
-// Dynamic form rendered from FieldSchema list.
+// Dynamic form rendered from a FieldSchema list.
 //
-// Task 11: schema-driven protocol editor. Adding a new protocol type only
-// requires registering a schema — no UI code changes.
+// The controller map is rebuilt in didUpdateWidget: the protocol dropdown
+// swaps the schema under a form whose State is reused, and the previous
+// implementation built controllers once in initState. Switching protocol then
+// left `_controllers[key]` null for every new field and `collect()` threw on
+// the null assertion — i.e. changing the protocol always crashed the dialog.
 
 import 'package:flutter/material.dart';
 
@@ -23,17 +26,50 @@ class DynamicForm extends StatefulWidget {
 
 /// Public state class so the parent can call [collect].
 class DynamicFormState extends State<DynamicForm> {
-  late final Map<String, TextEditingController> _controllers;
-  late final Map<String, dynamic> _local;
+  final Map<String, TextEditingController> _controllers = {};
+  final Map<String, bool> _bools = {};
 
   @override
   void initState() {
     super.initState();
-    _controllers = {};
-    _local = Map<String, dynamic>.from(widget.values);
-    for (final f in widget.fields) {
-      _controllers[f.key] = TextEditingController(text: _str(_local[f.key]));
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant DynamicForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.fields, widget.fields) ||
+        !identical(oldWidget.values, widget.values)) {
+      _sync();
     }
+  }
+
+  /// Reconciles controllers with the current schema: adds controllers for new
+  /// fields, disposes those whose field disappeared, keeps the rest (so text
+  /// typed into a field shared by two protocols survives a protocol switch).
+  void _sync() {
+    final wanted = {for (final f in widget.fields) f.key: f};
+
+    for (final key in _controllers.keys.toList()) {
+      if (!wanted.containsKey(key)) {
+        _controllers.remove(key)!.dispose();
+      }
+    }
+    _bools.removeWhere((key, _) => !wanted.containsKey(key));
+
+    wanted.forEach((key, f) {
+      if (f.type == FieldType.bool_) {
+        _bools.putIfAbsent(key, () => widget.values[key] == true);
+        return;
+      }
+      final initial = _str(widget.values[key]);
+      final existing = _controllers[key];
+      if (existing == null) {
+        _controllers[key] = TextEditingController(text: initial);
+      } else if (existing.text.isEmpty && initial.isNotEmpty) {
+        existing.text = initial;
+      }
+    });
   }
 
   @override
@@ -41,6 +77,7 @@ class DynamicFormState extends State<DynamicForm> {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    _controllers.clear();
     super.dispose();
   }
 
@@ -50,29 +87,61 @@ class DynamicFormState extends State<DynamicForm> {
     return v.toString();
   }
 
-  /// Collects current field values into a map.
+  /// Collects current field values, keyed and typed per the schema.
+  ///
+  /// Empty optional fields are omitted rather than written as `""`, so the
+  /// core's zero-value defaults apply instead of an explicit empty string.
   Map<String, dynamic> collect() {
     final out = <String, dynamic>{};
     for (final f in widget.fields) {
-      final raw = _controllers[f.key]!.text;
       switch (f.type) {
-        case FieldType.number:
-          out[f.key] = int.tryParse(raw) ?? 0;
-          break;
         case FieldType.bool_:
-          out[f.key] = _local[f.key] == true;
+          out[f.key] = _bools[f.key] ?? false;
+          break;
+        case FieldType.number:
+          final raw = _controllers[f.key]?.text.trim() ?? '';
+          if (raw.isEmpty) break;
+          final n = int.tryParse(raw);
+          if (n != null) out[f.key] = n;
           break;
         default:
+          final raw = _controllers[f.key]?.text ?? '';
+          if (raw.isEmpty && !f.required) break;
           out[f.key] = raw;
       }
     }
     return out;
   }
 
+  /// Returns the first schema violation, or null when the form is valid.
+  String? validate() {
+    for (final f in widget.fields) {
+      if (!f.required) continue;
+      final raw = _controllers[f.key]?.text.trim() ?? '';
+      if (raw.isEmpty) return '${f.label} is required';
+      if (f.type == FieldType.number) {
+        final n = int.tryParse(raw);
+        if (n == null) return '${f.label} must be a number';
+        if (f.key == 'port' && (n < 1 || n > 65535)) {
+          return 'Port must be between 1 and 65535';
+        }
+      }
+    }
+    // Port is validated even when not marked required.
+    final portRaw = _controllers['port']?.text.trim();
+    if (portRaw != null && portRaw.isNotEmpty) {
+      final n = int.tryParse(portRaw);
+      if (n == null || n < 1 || n > 65535) {
+        return 'Port must be between 1 and 65535';
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: widget.fields.map((f) => _buildField(f)).toList(),
+      children: widget.fields.map(_buildField).toList(),
     );
   }
 
@@ -80,81 +149,73 @@ class DynamicFormState extends State<DynamicForm> {
     switch (f.type) {
       case FieldType.text:
       case FieldType.password:
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextFormField(
-            controller: _controllers[f.key],
-            decoration: InputDecoration(
-              labelText: f.label,
-              hintText: f.hint,
-              border: const OutlineInputBorder(),
-            ),
-            obscureText: f.type == FieldType.password,
-            maxLines: f.multiline ? 4 : 1,
+      case FieldType.multiline:
+        return _padded(TextFormField(
+          controller: _controllers[f.key],
+          decoration: InputDecoration(
+            labelText: f.required ? '${f.label} *' : f.label,
+            hintText: f.hint,
+            border: const OutlineInputBorder(),
           ),
-        );
+          obscureText: f.type == FieldType.password,
+          maxLines: f.multiline ? 4 : 1,
+        ));
+
       case FieldType.number:
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextFormField(
-            controller: _controllers[f.key],
-            decoration: InputDecoration(
-              labelText: f.label,
-              border: const OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
+        return _padded(TextFormField(
+          controller: _controllers[f.key],
+          decoration: InputDecoration(
+            labelText: f.required ? '${f.label} *' : f.label,
+            hintText: f.hint,
+            border: const OutlineInputBorder(),
           ),
-        );
+          keyboardType: TextInputType.number,
+        ));
+
       case FieldType.combo:
-        final options = f.options ?? [];
-        final current = _controllers[f.key]!.text;
-        final dropdownValue = options.contains(current) || current.isEmpty
-            ? (current.isEmpty && options.isNotEmpty ? options.first : current)
-            : options.firstOrNull;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: DropdownButtonFormField<String>(
-            initialValue: dropdownValue,
-            decoration: InputDecoration(
-              labelText: f.label,
-              border: const OutlineInputBorder(),
-            ),
-            items: options
-                .map((o) => DropdownMenuItem(
-                      value: o,
-                      child: Text(o.isEmpty ? '(none)' : o),
-                    ))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) _controllers[f.key]!.text = v;
-            },
+        final options = f.options ?? const <String>[];
+        final controller = _controllers[f.key];
+        final current = controller?.text ?? '';
+        // Only feed the dropdown a value it actually offers; anything else
+        // (e.g. a value imported from a share link) is preserved in the
+        // controller and shown as the "custom" entry.
+        final items = <String>[
+          ...options,
+          if (current.isNotEmpty && !options.contains(current)) current,
+        ];
+        final value = items.contains(current)
+            ? current
+            : (items.isNotEmpty ? items.first : null);
+        return _padded(DropdownButtonFormField<String>(
+          initialValue: value,
+          decoration: InputDecoration(
+            labelText: f.label,
+            border: const OutlineInputBorder(),
           ),
-        );
+          items: items
+              .map((o) => DropdownMenuItem(
+                    value: o,
+                    child: Text(o.isEmpty ? '(none)' : o),
+                  ))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) controller?.text = v;
+          },
+        ));
+
       case FieldType.bool_:
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: CheckboxListTile(
-            value: _local[f.key] == true,
+            value: _bools[f.key] ?? false,
             title: Text(f.label),
-            onChanged: (v) {
-              setState(() {
-                _local[f.key] = v ?? false;
-              });
-            },
-          ),
-        );
-      case FieldType.tls:
-      case FieldType.stream:
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextFormField(
-            controller: _controllers[f.key],
-            decoration: InputDecoration(
-              labelText: f.label,
-              border: const OutlineInputBorder(),
-            ),
+            subtitle: f.hint == null ? null : Text(f.hint!),
+            onChanged: (v) => setState(() => _bools[f.key] = v ?? false),
           ),
         );
     }
   }
+
+  Widget _padded(Widget child) =>
+      Padding(padding: const EdgeInsets.only(bottom: 12), child: child);
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"net"
 	"strings"
 
 	nekokfmt "grpc_server/core/fmt"
@@ -81,10 +82,6 @@ func buildChain(status *BuildStatus, result *BuildResult) string {
 		}
 	}
 
-	// custom outbound merge
-	if cb, ok := bean.(*nekokfmt.CustomBean); ok {
-		_ = cb
-	}
 	// apply custom_outbound from bean if present
 	if raw := getCustomOutbound(ent); raw != "" {
 		var custom map[string]interface{}
@@ -161,15 +158,12 @@ func isIPAddress(s string) bool {
 	if s == "" {
 		return false
 	}
-	// IPv6 in brackets
-	s = strings.TrimPrefix(strings.TrimSuffix(s, "]"), "[")
-	// simple check: contains only digits, dots, colons (IPv4/IPv6 without brackets)
-	for _, c := range s {
-		if (c < '0' || c > '9') && c != '.' && c != ':' && c != 'a' && c != 'b' && c != 'c' && c != 'd' && c != 'e' && c != 'f' && c != 'A' && c != 'B' && c != 'C' && c != 'D' && c != 'E' && c != 'F' {
-			return false
-		}
+	host, _, err := net.SplitHostPort(s)
+	if err != nil {
+		host = s
 	}
-	return true
+	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	return net.ParseIP(host) != nil
 }
 
 // makeRule mirrors the make_rule lambda in ConfigBuilder.cpp.

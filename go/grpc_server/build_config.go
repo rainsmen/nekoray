@@ -3,6 +3,8 @@ package grpc_server
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"grpc_server/gen"
 
@@ -72,20 +74,18 @@ func (s *BaseServer) BuildConfig(ctx context.Context, in *gen.BuildConfigReq) (*
 
 // ParseSubscription implements the gRPC ParseSubscription method.
 //
-// ParseSubscription implements the gRPC ParseSubscription method.
-//
 // Parses subscription content (raw/clash/sip008/base64/auto) and returns
-// the list of decoded profiles.
+// the list of decoded profiles. Per-entry failures are reported with their
+// index so the caller can tell which node failed rather than being handed an
+// undifferentiated blob of messages.
 func (s *BaseServer) ParseSubscription(ctx context.Context, in *gen.ParseSubReq) (*gen.ParseSubResp, error) {
 	resp := &gen.ParseSubResp{}
 	results := sub.ParseContent(in.Content, in.Format)
-	for _, r := range results {
+
+	var errs []string
+	for i, r := range results {
 		if r.Error != "" {
-			if resp.Error == "" {
-				resp.Error = r.Error
-			} else {
-				resp.Error += "; " + r.Error
-			}
+			errs = append(errs, "entry "+strconv.Itoa(i+1)+": "+r.Error)
 			continue
 		}
 		if r.Profile == nil {
@@ -93,9 +93,13 @@ func (s *BaseServer) ParseSubscription(ctx context.Context, in *gen.ParseSubReq)
 		}
 		b, err := json.Marshal(r.Profile)
 		if err != nil {
+			errs = append(errs, "entry "+strconv.Itoa(i+1)+": "+err.Error())
 			continue
 		}
 		resp.Profiles = append(resp.Profiles, b)
+	}
+	if len(errs) > 0 {
+		resp.Error = strings.Join(errs, "; ")
 	}
 	return resp, nil
 }

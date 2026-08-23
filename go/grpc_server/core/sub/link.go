@@ -10,9 +10,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	nekokfmt "grpc_server/core/fmt"
 )
+
+// maxLinkLength caps a single share link / subscription blob (8 MiB) so a
+// hostile subscription cannot drive unbounded allocation during decoding.
+const maxLinkLength = 8 << 20
+
+// maxAutoDepth bounds the base64-in-base64 recursion in parseAuto.
+const maxAutoDepth = 4
 
 // ParseResult holds a parsed profile plus any error encountered.
 type ParseResult struct {
@@ -44,19 +52,18 @@ func ParseContent(content, format string) []ParseResult {
 }
 
 func parseAuto(content string) []ParseResult {
+	return parseAutoDepth(content, 0)
+}
+
+func parseAutoDepth(content string, depth int) []ParseResult {
 	// 1. try base64 decode (whole content)
-	if decoded, err := base64.StdEncoding.DecodeString(content); err == nil {
-		s := strings.TrimSpace(string(decoded))
-		if s != "" && s != content {
-			// recursively parse decoded content as auto
-			return parseAuto(s)
-		}
-	}
-	// also try URL-safe base64
-	if decoded, err := base64.URLEncoding.DecodeString(content); err == nil {
-		s := strings.TrimSpace(string(decoded))
-		if s != "" && s != content {
-			return parseAuto(s)
+	if depth < maxAutoDepth {
+		if decoded := decodeB64IfValid(content); decoded != "" {
+			s := strings.TrimSpace(decoded)
+			if s != "" && s != content {
+				// recursively parse decoded content as auto
+				return parseAutoDepth(s, depth+1)
+			}
 		}
 	}
 
@@ -76,15 +83,11 @@ func parseAuto(content string) []ParseResult {
 
 // parseBase64 decodes base64 content then parses as auto.
 func parseBase64(content string) []ParseResult {
-	decoded, err := base64.StdEncoding.DecodeString(content)
-	if err != nil {
-		// try url-safe
-		decoded, err = base64.URLEncoding.DecodeString(content)
-		if err != nil {
-			return []ParseResult{{Error: "invalid base64: " + err.Error()}}
-		}
+	decoded := decodeB64IfValid(content)
+	if decoded == "" {
+		return []ParseResult{{Error: "invalid base64"}}
 	}
-	return parseAuto(strings.TrimSpace(string(decoded)))
+	return parseAuto(strings.TrimSpace(decoded))
 }
 
 // parseRaw parses raw link list (one link per line).
@@ -211,20 +214,61 @@ func newEntity(t string, bean interface{}) *nekokfmt.ProxyEntity {
 
 // --- helpers ---
 
+// decodeB64IfValid decodes s when it genuinely looks base64-encoded.
+//
+// The previous implementation padded any input and handed it to the decoder,
+// which happily decoded ordinary text that merely happened to use base64's
+// alphabet (e.g. "password") and returned bytes that were not the caller's
+// data. Require the whole string to be base64 and the result to be valid UTF-8.
 func decodeB64IfValid(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
-	// pad
-	if m := len(s) % 4; m != 0 {
-		s += strings.Repeat("=", 4-m)
+	// Reject inputs large enough to make decoding a memory concern.
+	if len(s) > maxLinkLength {
+		return ""
 	}
-	if b, err := base64.URLEncoding.DecodeString(s); err == nil {
-		return string(b)
+	body := strings.TrimRight(s, "=")
+	if len(body) < 4 {
+		return ""
 	}
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return string(b)
+
+	std := true
+	urlSafe := true
+	for _, r := range body {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case r == '+', r == '/':
+			urlSafe = false
+		case r == '-', r == '_':
+			std = false
+		default:
+			return ""
+		}
+	}
+
+	decode := func(enc *base64.Encoding) (string, bool) {
+		padded := body
+		if m := len(padded) % 4; m != 0 {
+			padded += strings.Repeat("=", 4-m)
+		}
+		b, err := enc.DecodeString(padded)
+		if err != nil || !utf8.Valid(b) {
+			return "", false
+		}
+		return string(b), true
+	}
+
+	if urlSafe {
+		if out, ok := decode(base64.URLEncoding); ok {
+			return out
+		}
+	}
+	if std {
+		if out, ok := decode(base64.StdEncoding); ok {
+			return out
+		}
 	}
 	return ""
 }

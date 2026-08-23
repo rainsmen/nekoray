@@ -2,10 +2,23 @@ name: Lint & Test
 
 on:
   push:
-    branches: [main, dev, feature/core-v2]
+    branches: [main, dev]
   pull_request:
     branches: [main, dev]
   workflow_dispatch:
+
+# A newer push supersedes an in-flight run for the same ref.
+concurrency:
+  group: lint-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match the `go` directive in go/cmd/nekobox_core/go.mod. A lower
+  # version here silently relied on toolchain auto-download.
+  GO_VERSION: '1.24.7'
 
 jobs:
   go-check:
@@ -15,29 +28,111 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
           cache-dependency-path: go/cmd/nekobox_core/go.sum
 
       - name: Get sources (sing-box etc.)
         run: ./libs/get_source.sh
 
-      - name: Go vet
+      - name: Verify module checksums
         working-directory: go/cmd/nekobox_core
+        run: go mod verify
+
+      - name: Go vet (nekobox_core)
+        working-directory: go/cmd/nekobox_core
+        run: go vet ./...
+
+      - name: Go vet (grpc_server)
+        working-directory: go/grpc_server
+        run: go vet ./...
+
+      - name: Go vet (updater)
+        working-directory: go/cmd/updater
         run: go vet ./...
 
       - name: Go build check
         working-directory: go/cmd/nekobox_core
         run: go build ./...
 
-      - name: Go test
+      - name: Go test (nekobox_core)
         working-directory: go/cmd/nekobox_core
+        run: go test ./... -race -cover
+
+      - name: Go test (grpc_server)
+        working-directory: go/grpc_server
+        run: go test ./... -race -cover
+
+      - name: Go test (updater)
+        working-directory: go/cmd/updater
+        run: go test ./... -race -cover
+
+      - name: Check formatting
         run: |
-          go test ./... -v -cover
-          # also test the grpc_server module (where core config builder lives)
-          cd ../../grpc_server
-          go test ./... -v -cover
+          unformatted=$(gofmt -l go/ | grep -v '/gen/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Get sources
+        run: ./libs/get_source.sh
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan nekobox_core
+        working-directory: go/cmd/nekobox_core
+        run: govulncheck ./...
+      - name: Scan updater
+        working-directory: go/cmd/updater
+        run: govulncheck ./...
+
+  flutter-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: nekoray_flutter
+        run: flutter pub get
+
+      - name: Verify formatting
+        working-directory: nekoray_flutter
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        working-directory: nekoray_flutter
+        run: flutter analyze --fatal-warnings
+
+      # No "|| echo": a failing test must fail the build.
+      - name: Test
+        working-directory: nekoray_flutter
+        run: flutter test --coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: nekoray_flutter/coverage
+          flags: flutter
+        continue-on-error: true # coverage upload is not a gate

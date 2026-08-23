@@ -4,12 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release Tag (e.g. v5.0.0-beta.2)"
+        description: "Release Tag (e.g. v5.0.0-beta.4)"
         required: true
       prerelease:
         description: "Prerelease?"
         type: boolean
         default: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match the `go` directive in the module files.
+  GO_VERSION: '1.24.7'
 
 jobs:
   build-go-core:
@@ -29,9 +36,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
       - name: Fetch sing-box source
         run: ./libs/get_source.sh
       - name: Build
@@ -43,6 +51,7 @@ jobs:
         with:
           name: core-${{ matrix.goos }}-${{ matrix.goarch }}
           path: deployment/
+          if-no-files-found: error
 
   build-flutter:
     strategy:
@@ -61,6 +70,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Linux deps
         if: matrix.target == 'linux'
@@ -95,16 +105,13 @@ jobs:
         shell: bash
         run: ./libs/package_flutter_release.sh ${{ matrix.target }}
 
-      - name: Verify archive exists
-        shell: bash
-        run: |
-          ls -la deployment/nekoray-* || echo "WARNING: no archive found"
-          find deployment -name "nekoray-*" -type f
-
       - uses: actions/upload-artifact@v4
         with:
           name: nekoray-release-${{ matrix.target }}
           path: deployment/nekoray-*
+          # The packaging script now fails loudly on a missing core binary, but
+          # this is the backstop: an empty artifact must never reach a release.
+          if-no-files-found: error
 
   build-android:
     runs-on: ubuntu-latest
@@ -113,10 +120,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/setup-java@v4
         with:
@@ -136,9 +144,10 @@ jobs:
       - name: Fetch sing-box source
         run: ./libs/get_source.sh
 
+      # No continue-on-error: an APK without the Go core is a shell that cannot
+      # proxy anything, and shipping one silently is worse than failing here.
       - name: Build Android Go core (.so)
         run: ./libs/build_android.sh
-        continue-on-error: true
 
       - name: Enable Android platform
         working-directory: nekoray_flutter
@@ -155,12 +164,18 @@ jobs:
       - name: Rename APKs with version
         shell: bash
         run: |
-          VERSION=$(cat nekoray_version.txt | tr -d '[:space:]')
+          set -euo pipefail
+          VERSION=$(tr -d '[:space:]' < nekoray_version.txt)
           SRC=nekoray_flutter/build/app/outputs/flutter-apk
           mkdir -p deployment
-          for apk in "$SRC"/*.apk; do
+          shopt -s nullglob
+          apks=("$SRC"/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::no APK produced"
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
             base=$(basename "$apk" .apk)
-            # app-arm64-v8a-release.apk -> nekoray-5.0.0-beta.1-android-arm64-v8a.apk
             arch=$(echo "$base" | sed 's/app-//; s/-release//')
             cp "$apk" "deployment/nekoray-${VERSION}-android-${arch}.apk"
           done
@@ -170,6 +185,7 @@ jobs:
         with:
           name: nekoray-release-android
           path: deployment/nekoray-*.apk
+          if-no-files-found: error
 
   create-release:
     needs: [build-flutter, build-android]
@@ -178,43 +194,62 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Gather release assets
         run: |
+          set -euo pipefail
           mkdir -p release-assets
-          find artifacts -type f \( -name "nekoray-*.zip" -o -name "nekoray-*.tar.gz" -o -name "nekoray-*.apk" \) | \
-            while read f; do cp "$f" release-assets/; done
+          find artifacts -type f \( -name "nekoray-*.zip" -o -name "nekoray-*.tar.gz" -o -name "nekoray-*.apk" \) \
+            -exec cp {} release-assets/ \;
           echo "=== Release assets ==="
           ls -la release-assets/
+          count=$(find release-assets -type f | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no release assets were produced"
+            exit 1
+          fi
+          echo "asset count: $count"
+
+      # The updater refuses to install a package it cannot verify, so a release
+      # without this file cannot be auto-updated to.
+      - name: Generate SHA256SUMS
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum nekoray-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Generate changelog
         run: |
-          cat > CHANGELOG.md << 'EOF'
+          cat > RELEASE_NOTES.md << 'EOF'
           # NekoRay ${{ github.event.inputs.tag }}
 
-          ## Flutter Desktop + Mobile Client
+          ## Downloads
 
-          ### Downloads
-          #### Desktop
-          - Windows: `nekoray-*-windows64.zip`
-          - Linux: `nekoray-*-linux64.tar.gz`
-          - macOS: `nekoray-*-macos.zip`
-          #### Android
-          - arm64: `nekoray-*-android-arm64-v8a.apk`
-          - armv7: `nekoray-*-android-armeabi-v7a.apk`
-          - x86_64: `nekoray-*-android-x86_64.apk`
+          | Platform | File |
+          |---|---|
+          | Windows | `nekoray-*-windows64.zip` |
+          | Linux | `nekoray-*-linux64.tar.gz` |
+          | macOS | `nekoray-*-macos.zip` |
+          | Android arm64 | `nekoray-*-android-arm64-v8a.apk` |
+          | Android armv7 | `nekoray-*-android-armeabi-v7a.apk` |
+          | Android x86_64 | `nekoray-*-android-x86_64.apk` |
 
-          ### Highlights
-          - Flutter Material 3 UI (replaces C++/Qt)
-          - sing-box v1.13.19 upstream core
-          - gRPC-based architecture (Go core + Flutter thin client)
-          - Cross-platform: Windows, Linux, macOS, Android
-          - Schema-driven protocol editor (11 protocols)
-          - Routing rules + DNS presets + traffic charts
-          - Data migration from old C++ nekoray config
+          Verify your download against `SHA256SUMS.txt`:
+
+          ```
+          sha256sum -c SHA256SUMS.txt --ignore-missing
+          ```
+
+          ## Highlights
+          - Flutter Material 3 UI on a sing-box Go core, over gRPC
+          - Schema-driven protocol editor
+          - Routing rules, DNS settings and traffic charts
           EOF
 
       - name: Create Release
@@ -223,4 +258,5 @@ jobs:
           tag_name: ${{ github.event.inputs.tag }}
           prerelease: ${{ github.event.inputs.prerelease }}
           files: release-assets/*
-          body_path: CHANGELOG.md
+          body_path: RELEASE_NOTES.md
+          fail_on_unmatched_files: true

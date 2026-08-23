@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -19,7 +19,9 @@ func main() {
 	}
 
 	wd := filepath.Dir(exe)
-	os.Chdir(wd)
+	if err := os.Chdir(wd); err != nil {
+		log.Fatalln("chdir:", err)
+	}
 	exe = filepath.Base(os.Args[0])
 	log.Println("exe:", exe, "exe dir:", wd)
 
@@ -30,11 +32,13 @@ func main() {
 				time.Sleep(time.Second)
 				Updater()
 				// 3. start
-				exec.Command("./nekobox.exe").Start()
+				start("./nekobox.exe")
 			} else {
 				// 1. main prog quit and run "updater.exe"
-				Copy("./updater.exe", "./updater.old")
-				exec.Command("./updater.old", os.Args[1:]...).Start()
+				if err := Copy("./updater.exe", "./updater.old"); err != nil {
+					log.Fatalln("stage updater:", err)
+				}
+				start("./updater.old", os.Args[1:]...)
 			}
 		} else {
 			// 1. update files
@@ -43,7 +47,7 @@ func main() {
 			if os.Getenv("NKR_FROM_LAUNCHER") == "1" {
 				Launcher()
 			} else {
-				exec.Command("./nekobox").Start()
+				start("./nekobox")
 			}
 		}
 		return
@@ -54,9 +58,28 @@ func main() {
 	log.Fatalf("wrong name")
 }
 
-func Copy(src string, dst string) {
-	// Read all content of src to data
-	data, _ := ioutil.ReadFile(src)
-	// Write data to dst
-	ioutil.WriteFile(dst, data, 0644)
+// start launches a detached process, logging (rather than swallowing) failures.
+func start(name string, args ...string) {
+	if err := exec.Command(name, args...).Start(); err != nil {
+		log.Println("failed to start", name+":", err)
+	}
+}
+
+// Copy copies src to dst, streaming rather than buffering the whole file.
+func Copy(src string, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }

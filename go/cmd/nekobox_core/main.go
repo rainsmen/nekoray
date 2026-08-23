@@ -15,14 +15,20 @@ func main() {
 	fmt.Println()
 
 	// Parse args: nekobox_core nekobox [--token TOKEN] [--port PORT] [--debug]
+	//
+	// Prefer passing the token via the NEKORAY_AUTH_TOKEN environment variable —
+	// command-line arguments are visible to any process that can read /proc.
 	if len(os.Args) > 1 && os.Args[1] == "nekobox" {
 		token, port := parseArgs(os.Args[2:])
+		grpc_server.SetVersion(CoreVersion)
+		grpc_server.SetProxyHttpClientFactory(resolveProxyClient)
 		grpc_server.RunCore(token, port, Debug, &server{})
 		return
 	}
 
 	fmt.Println("usage: nekobox_core nekobox [--token TOKEN] [--port PORT] [--debug]")
-	os.Exit(0)
+	fmt.Printf("       (token may also be supplied via $%s)\n", grpc_server.TokenEnvVar)
+	os.Exit(2)
 }
 
 // parseArgs extracts --token, --port, --debug from the argument list.

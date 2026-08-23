@@ -392,7 +392,7 @@ func buildSSH(b *nekokfmt.SSHBean) map[string]interface{} {
 		outbound["password"] = b.Password
 	}
 	if strings.TrimSpace(b.PrivateKey) != "" {
-		outbound["private_key"] = strings.Split(b.PrivateKey, "\n")
+		outbound["private_key"] = b.PrivateKey
 	}
 	if strings.TrimSpace(b.PrivateKeyPath) != "" {
 		outbound["private_key_path"] = b.PrivateKeyPath

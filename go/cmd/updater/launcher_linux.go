@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 )
 
-var local_qt_theme bool
-
+// Launcher starts the bundled Flutter binary with the bundled shared libraries
+// on the search path.
 func Launcher() {
 	log.Println("Running as launcher")
 	wd, _ := filepath.Abs(".")
@@ -19,23 +19,21 @@ func Launcher() {
 
 	cmd := exec.Command("./nekobox", flag.Args()...)
 
-	ld_env := "LD_LIBRARY_PATH=" + filepath.Join(wd, "./usr/lib")
-	qt_plugin_env := "QT_PLUGIN_PATH=" + filepath.Join(wd, "./usr/plugins")
+	ldEnv := "LD_LIBRARY_PATH=" + filepath.Join(wd, "./lib")
 
-	// Qt 5.12 abi is usually compatible with system Qt 5.15
-	// But use package Qt 5.12 by default.
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "NKR_FROM_LAUNCHER=1")
-	cmd.Env = append(cmd.Env, ld_env, qt_plugin_env)
-	log.Println(ld_env, qt_plugin_env, cmd)
+	cmd.Env = append(os.Environ(), "NKR_FROM_LAUNCHER=1", ldEnv)
+	log.Println(ldEnv, cmd)
 
 	if *_debug {
-		cmd.Env = append(cmd.Env, "QT_DEBUG_PLUGINS=1")
 		cmd.Stdin = os.Stdin
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
-		cmd.Run()
-	} else {
-		cmd.Start()
+		if err := cmd.Run(); err != nil {
+			log.Println("nekobox exited:", err)
+		}
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		log.Println("failed to start nekobox:", err)
 	}
 }

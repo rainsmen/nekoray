@@ -23,6 +23,9 @@ type server struct {
 func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
+
 	defer func() {
 		out = &gen.ErrorResp{}
 		if err != nil {
@@ -48,6 +51,9 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
+
 	defer func() {
 		out = &gen.ErrorResp{}
 		if err != nil {
@@ -63,6 +69,7 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 	instance.Close()
 	instance = nil
 	instanceCancel = nil
+	instanceCtx = nil
 	return
 }
 
@@ -90,7 +97,9 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 				return
 			}
 		} else {
+			instanceMu.RLock()
 			i = instance
+			instanceMu.RUnlock()
 			if i == nil {
 				return
 			}
@@ -105,7 +114,15 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 		ms, err = tcpPing(in.Address, int(in.Timeout))
 		out.Ms = int32(ms)
 	} else if in.Mode == gen.TestMode_FullTest {
-		i, cancel, _, err := createInstance([]byte(in.Config.CoreConfig))
+		if in.Config == nil {
+			err = errors.New("full test requires a config")
+			return
+		}
+		// NOTE: plain "=" (not ":=") so the deferred error handler above sees
+		// the failure; a ":=" here would shadow `err` and silently report success.
+		var i *box.Box
+		var cancel context.CancelFunc
+		i, cancel, _, err = createInstance([]byte(in.Config.CoreConfig))
 		if i != nil {
 			defer i.Close()
 			defer cancel()
@@ -123,8 +140,13 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *gen.QueryStatsResp, _ error) {
 	out = &gen.QueryStatsResp{}
 
-	if instance != nil && instanceCtx != nil {
-		v2rayServer := service.FromContext[adapter.V2RayServer](instanceCtx)
+	instanceMu.RLock()
+	inst := instance
+	instCtx := instanceCtx
+	instanceMu.RUnlock()
+
+	if inst != nil && instCtx != nil {
+		v2rayServer := service.FromContext[adapter.V2RayServer](instCtx)
 		if v2rayServer != nil {
 			tracker := v2rayServer.StatsService()
 			if tracker != nil {

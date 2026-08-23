@@ -32,8 +32,9 @@ func (s *BaseServer) UpdateRuleSet(ctx context.Context, in *gen.UpdateRuleSetReq
 			resp.Error = err.Error()
 			return resp, nil
 		}
-	} else {
-		mgr.Register(in.Tag, in.Format, in.Url)
+	} else if err := mgr.Register(in.Tag, in.Format, in.Url); err != nil {
+		resp.Error = err.Error()
+		return resp, nil
 	}
 	return resp, nil
 }

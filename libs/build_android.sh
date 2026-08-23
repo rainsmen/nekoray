@@ -64,13 +64,16 @@ build_abi() {
   export GOARCH=$GOARCH
   [ "$GOARCH" = "arm" ] && export GOARM=7 || unset GOARM
 
-  export CC="$TOOLCHAIN/${NDK_ARCH}-linux-android${API}-clang"
-  export CXX="$TOOLCHAIN/${NDK_ARCH}-linux-android${API}-clang++"
+  local TRIPLE="${NDK_ARCH}-linux-android"
+  [ "$NDK_ARCH" = "armv7a" ] && TRIPLE="armv7a-linux-androideabi"
+
+  export CC="$TOOLCHAIN/${TRIPLE}${API}-clang"
+  export CXX="$TOOLCHAIN/${TRIPLE}${API}-clang++"
 
   if [ ! -f "$CC" ]; then
     echo "WARNING: $CC not found, trying API 21"
-    export CC="$TOOLCHAIN/${NDK_ARCH}-linux-android21-clang"
-    export CXX="$TOOLCHAIN/${NDK_ARCH}-linux-android21-clang++"
+    export CC="$TOOLCHAIN/${TRIPLE}21-clang"
+    export CXX="$TOOLCHAIN/${TRIPLE}21-clang++"
   fi
 
   mkdir -p "$DEST/$ABI"
@@ -89,7 +92,7 @@ build_abi() {
 }
 
 build_abi arm64  arm64  aarch64
-build_abi arm    arm    armv7a  arm
+build_abi arm    arm    armv7a  24
 build_abi x86_64 amd64  x86_64
 
 popd

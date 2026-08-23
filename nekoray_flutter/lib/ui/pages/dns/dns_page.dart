@@ -1,85 +1,99 @@
-// DNS settings page (task 12).
+// DNS page — edits the DNS half of the persisted routing config.
 //
-// Migrates the DNS section of dialog_basic_settings.cpp.
-// Preset schemes: bypass CN, global, custom.
+// These fields were previously stand-alone in-memory providers that nothing
+// read: `toGrpcRouting` hardcoded its DNS servers, so changing anything here
+// had no effect and did not survive a restart. They now write straight into
+// routing_default.json, which is what the config builder consumes.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum DnsPreset { bypassCn, global, custom }
+import '../routing/routing_page.dart';
 
-final dnsPresetProvider = StateProvider<DnsPreset>((ref) => DnsPreset.bypassCn);
-final dnsRemoteProvider = StateProvider<String>(
-    (ref) => 'https://dns.google/dns-query');
-final dnsDirectProvider =
-    StateProvider<String>((ref) => 'https://223.5.5.5/dns-query');
-final dnsBlockProvider = StateProvider<String>((ref) => 'rcode://success');
-final dnsFakeipProvider = StateProvider<bool>((ref) => true);
+enum DnsPreset { bypassCn, global, custom }
 
 class DnsPage extends ConsumerWidget {
   const DnsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final preset = ref.watch(dnsPresetProvider);
+    final async = ref.watch(routingConfigProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('DNS')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Preset selector
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+      body: async.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Failed to load DNS settings: $e')),
+        data: (config) => ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Preset',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: DnsPreset.values
+                          .where((p) => p != DnsPreset.custom)
+                          .map((p) => ActionChip(
+                                label: Text(_presetLabel(p)),
+                                onPressed: () => _applyPreset(ref, p),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _DnsFieldCard(
+              title: 'Remote DNS',
+              value: config.remoteDns,
+              hint: 'https://dns.google/dns-query',
+              onSubmit: (v) => ref
+                  .read(routingConfigProvider.notifier)
+                  .updateDns(remoteDns: v),
+            ),
+            _DnsFieldCard(
+              title: 'Direct DNS',
+              value: config.directDns,
+              hint: 'https://223.5.5.5/dns-query',
+              onSubmit: (v) => ref
+                  .read(routingConfigProvider.notifier)
+                  .updateDns(directDns: v),
+            ),
+            Card(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Preset', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    children: DnsPreset.values.map((p) {
-                      return ChoiceChip(
-                        label: Text(_presetLabel(p)),
-                        selected: preset == p,
-                        onSelected: (_) {
-                          ref.read(dnsPresetProvider.notifier).state = p;
-                          _applyPreset(ref, p);
-                        },
-                      );
-                    }).toList(),
+                  SwitchListTile(
+                    title: const Text('DNS Routing'),
+                    subtitle: const Text(
+                        'Resolve proxied domains through the remote server'),
+                    value: config.dnsRouting,
+                    onChanged: (v) => ref
+                        .read(routingConfigProvider.notifier)
+                        .updateDns(dnsRouting: v),
+                  ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    title: const Text('FakeIP'),
+                    subtitle: const Text(
+                        'Answer with synthetic addresses; usually paired with TUN mode'),
+                    value: config.fakeIp,
+                    onChanged: (v) => ref
+                        .read(routingConfigProvider.notifier)
+                        .updateDns(fakeIp: v),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Servers
-          _DnsFieldCard(
-            title: 'Remote DNS',
-            provider: dnsRemoteProvider,
-            hint: 'https://dns.google/dns-query',
-          ),
-          _DnsFieldCard(
-            title: 'Direct DNS',
-            provider: dnsDirectProvider,
-            hint: 'https://223.5.5.5/dns-query',
-          ),
-          _DnsFieldCard(
-            title: 'Block DNS',
-            provider: dnsBlockProvider,
-            hint: 'rcode://success',
-          ),
-          // FakeIP
-          Card(
-            child: SwitchListTile(
-              title: const Text('FakeIP'),
-              subtitle: const Text('Use fake IP for domain resolution'),
-              value: ref.watch(dnsFakeipProvider),
-              onChanged: (v) => ref.read(dnsFakeipProvider.notifier).state = v,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -96,53 +110,85 @@ class DnsPage extends ConsumerWidget {
   }
 
   void _applyPreset(WidgetRef ref, DnsPreset p) {
+    final notifier = ref.read(routingConfigProvider.notifier);
     switch (p) {
       case DnsPreset.bypassCn:
-        ref.read(dnsRemoteProvider.notifier).state = 'https://dns.google/dns-query';
-        ref.read(dnsDirectProvider.notifier).state = 'https://223.5.5.5/dns-query';
-        ref.read(dnsFakeipProvider.notifier).state = true;
+        notifier.updateDns(
+          remoteDns: 'https://dns.google/dns-query',
+          directDns: 'https://223.5.5.5/dns-query',
+          dnsRouting: true,
+        );
         break;
       case DnsPreset.global:
-        ref.read(dnsRemoteProvider.notifier).state = 'https://dns.google/dns-query';
-        ref.read(dnsDirectProvider.notifier).state = 'https://dns.google/dns-query';
-        ref.read(dnsFakeipProvider.notifier).state = false;
+        notifier.updateDns(
+          remoteDns: 'https://dns.google/dns-query',
+          directDns: 'https://dns.google/dns-query',
+          dnsRouting: false,
+        );
         break;
       case DnsPreset.custom:
-        // keep current
         break;
     }
   }
 }
 
-class _DnsFieldCard extends ConsumerWidget {
+class _DnsFieldCard extends StatefulWidget {
   final String title;
-  final StateProvider<String> provider;
+  final String value;
   final String hint;
+  final void Function(String) onSubmit;
 
   const _DnsFieldCard({
     required this.title,
-    required this.provider,
+    required this.value,
     required this.hint,
+    required this.onSubmit,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(provider);
+  State<_DnsFieldCard> createState() => _DnsFieldCardState();
+}
+
+class _DnsFieldCardState extends State<_DnsFieldCard> {
+  late final TextEditingController _ctrl =
+      TextEditingController(text: widget.value);
+
+  @override
+  void didUpdateWidget(covariant _DnsFieldCard old) {
+    super.didUpdateWidget(old);
+    // Reflect external changes (a preset being applied) without clobbering
+    // whatever the user is currently typing.
+    if (old.value != widget.value && _ctrl.text == old.value) {
+      _ctrl.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            TextFormField(
-              initialValue: value,
+            TextField(
+              controller: _ctrl,
               decoration: InputDecoration(
-                hintText: hint,
+                hintText: widget.hint,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (v) => ref.read(provider.notifier).state = v,
+              // Persist on commit rather than on every keystroke, so the file
+              // is not rewritten once per typed character.
+              onSubmitted: widget.onSubmit,
+              onTapOutside: (_) => widget.onSubmit(_ctrl.text),
             ),
           ],
         ),

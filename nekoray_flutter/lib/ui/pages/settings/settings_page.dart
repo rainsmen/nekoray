@@ -1,59 +1,59 @@
-// Settings page (task 12/14) — basic settings + platform features.
+// Settings page — backed by persisted [AppSettings].
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Global settings providers
-final systemProxyProvider = StateProvider<bool>((ref) => false);
-final tunModeProvider = StateProvider<bool>((ref) => false);
-final autoStartProvider = StateProvider<bool>((ref) => false);
-final minimizeToTrayProvider = StateProvider<bool>((ref) => true);
-final corePortProvider = StateProvider<int>((ref) => 19821);
-final listenAddrProvider = StateProvider<String>((ref) => '127.0.0.1');
-final mixedPortProvider = StateProvider<int>((ref) => 2080);
+import '../../../core/grpc/grpc_provider.dart';
+import '../../../core/state/providers.dart';
+import '../../../core/state/settings.dart';
+import '../../../core/storage/local_store.dart';
+import '../../../core/storage/migration.dart';
+import '../../../core/system/system_integration.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+    final connection = ref.watch(coreConnectionProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Proxy settings
           _SectionTitle('Proxy'),
           Card(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.public),
+                SwitchListTile(
+                  secondary: const Icon(Icons.public),
                   title: const Text('System Proxy'),
-                  subtitle: const Text('Set system-wide HTTP/SOCKS proxy'),
-                  trailing: Switch(
-                    value: ref.watch(systemProxyProvider),
-                    onChanged: (v) =>
-                        ref.read(systemProxyProvider.notifier).state = v,
-                  ),
+                  subtitle: Text(SystemIntegration.supportsSystemProxy
+                      ? 'Point the OS at ${settings.listenAddress}:${settings.mixedPort}'
+                      : 'Not available on this desktop environment'),
+                  value: settings.systemProxy,
+                  onChanged: SystemIntegration.supportsSystemProxy
+                      ? (v) => _guard(context, () => notifier.setSystemProxy(v))
+                      : null,
                 ),
                 const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.vpn_lock),
+                SwitchListTile(
+                  secondary: const Icon(Icons.vpn_lock),
                   title: const Text('TUN Mode'),
-                  subtitle: const Text('Virtual network interface (requires admin)'),
-                  trailing: Switch(
-                    value: ref.watch(tunModeProvider),
-                    onChanged: (v) =>
-                        ref.read(tunModeProvider.notifier).state = v,
-                  ),
+                  subtitle: const Text(
+                      'Route all traffic through a virtual interface. '
+                      'Requires the core to run with elevated privileges.'),
+                  value: settings.tunMode,
+                  onChanged: (v) => _guard(context, () => notifier.setTunMode(v)),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          // Core settings
           _SectionTitle('Core'),
           Card(
             child: Column(
@@ -61,14 +61,14 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.settings_ethernet),
                   title: const Text('Mixed Port'),
-                  subtitle: Text('${ref.watch(mixedPortProvider)}'),
+                  subtitle: Text('${settings.mixedPort}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editInt(
                       context,
-                      ref,
-                      'Mixed Port',
-                      mixedPortProvider,
+                      title: 'Mixed Port',
+                      initial: settings.mixedPort,
+                      onSave: notifier.setMixedPort,
                     ),
                   ),
                 ),
@@ -76,14 +76,14 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.dns),
                   title: const Text('Listen Address'),
-                  subtitle: Text(ref.watch(listenAddrProvider)),
+                  subtitle: Text(settings.listenAddress),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editString(
                       context,
-                      ref,
-                      'Listen Address',
-                      listenAddrProvider,
+                      title: 'Listen Address',
+                      initial: settings.listenAddress,
+                      onSave: notifier.setListenAddress,
                     ),
                   ),
                 ),
@@ -91,15 +91,32 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.hub),
                   title: const Text('Core gRPC Port'),
-                  subtitle: Text('${ref.watch(corePortProvider)}'),
+                  subtitle: Text(settings.corePort == 0
+                      ? 'Automatic${connection.port != null ? ' (currently ${connection.port})' : ''}'
+                      : '${settings.corePort}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editInt(
                       context,
-                      ref,
-                      'Core Port',
-                      corePortProvider,
+                      title: 'Core gRPC Port (0 = automatic)',
+                      initial: settings.corePort,
+                      onSave: notifier.setCorePort,
                     ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.article_outlined),
+                  title: const Text('Log Level'),
+                  subtitle: Text(settings.logLevel),
+                  trailing: DropdownButton<String>(
+                    value: settings.logLevel,
+                    items: const ['trace', 'debug', 'info', 'warn', 'error']
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (v) => v == null
+                        ? null
+                        : _guard(context, () => notifier.setLogLevel(v)),
                   ),
                 ),
               ],
@@ -107,39 +124,86 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          // UI settings
-          _SectionTitle('UI'),
+          _SectionTitle('Application'),
           Card(
             child: Column(
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.minimize),
                   title: const Text('Minimize to Tray'),
-                  subtitle: const Text('Hide to system tray on close'),
-                  value: ref.watch(minimizeToTrayProvider),
+                  subtitle: const Text('Hide to the system tray on close'),
+                  value: settings.minimizeToTray,
                   onChanged: (v) =>
-                      ref.read(minimizeToTrayProvider.notifier).state = v,
+                      _guard(context, () => notifier.setMinimizeToTray(v)),
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
                   secondary: const Icon(Icons.power_settings_new),
                   title: const Text('Start with System'),
-                  subtitle: const Text('Launch on system boot'),
-                  value: ref.watch(autoStartProvider),
+                  subtitle: Text(SystemIntegration.supportsAutoStart
+                      ? 'Launch NekoRay on login'
+                      : 'Not available on this platform'),
+                  value: settings.autoStart,
+                  onChanged: SystemIntegration.supportsAutoStart
+                      ? (v) => _guard(context, () => notifier.setAutoStart(v))
+                      : null,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.language),
+                  title: const Text('Language'),
+                  trailing: DropdownButton<String>(
+                    value: settings.locale,
+                    items: const [
+                      DropdownMenuItem(value: 'zh', child: Text('中文')),
+                      DropdownMenuItem(value: 'en', child: Text('English')),
+                    ],
+                    onChanged: (v) => v == null
+                        ? null
+                        : _guard(context, () => notifier.setLocale(v)),
+                  ),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.science_outlined),
+                  title: const Text('Include Pre-releases'),
+                  subtitle: const Text('Offer beta builds when checking for updates'),
+                  value: settings.checkPreRelease,
                   onChanged: (v) =>
-                      ref.read(autoStartProvider.notifier).state = v,
+                      _guard(context, () => notifier.setCheckPreRelease(v)),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 24),
 
-          // About
           Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('About NekoRay'),
-              subtitle: const Text('Version 5.0.0-beta1\nFlutter desktop client'),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About NekoRay'),
+                  subtitle: const Text('Flutter client for the sing-box core'),
+                ),
+                const Divider(height: 1),
+                FutureBuilder<String>(
+                  future: LocalStore.rootPath(),
+                  builder: (context, snap) => ListTile(
+                    leading: const Icon(Icons.folder_outlined),
+                    title: const Text('Data Directory'),
+                    subtitle: Text(snap.data ?? '…'),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.drive_file_move_outline),
+                  title: const Text('Import Old Configuration'),
+                  subtitle: const Text(
+                      'Scan for a previous nekoray config directory and import it'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _runMigration(context, ref),
+                ),
+              ],
             ),
           ),
         ],
@@ -147,28 +211,119 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  void _editInt(BuildContext context, WidgetRef ref, String title,
-      StateProvider<int> provider) {
-    final ctrl = TextEditingController(text: ref.read(provider).toString());
-    showDialog(
+  /// Detects an older config directory and imports it after confirmation.
+  static Future<void> _runMigration(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    final oldDir = await DataMigration.detectOldConfigDir();
+    if (!context.mounted) return;
+    if (oldDir == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('No previous nekoray configuration was found'),
+      ));
+      return;
+    }
+
+    // Dry run first, so the user sees what would happen before anything is
+    // written.
+    final preview = await DataMigration.migrateFrom(oldDir, dryRun: true);
+    if (!context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import old configuration?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Source: $oldDir'),
+            const SizedBox(height: 8),
+            Text('Profiles: ${preview.profiles}\n'
+                'Groups: ${preview.groups}\n'
+                'Routing files: ${preview.routing}'),
+            if (preview.hasErrors) ...[
+              const SizedBox(height: 8),
+              Text('${preview.errors.length} file(s) could not be read '
+                  'and will be skipped.'),
+            ],
+            const SizedBox(height: 8),
+            const Text('Existing profiles are kept; imported nodes get new ids.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Import')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final report = await DataMigration.migrateFrom(oldDir);
+    await ref.read(profileListProvider.notifier).load();
+    await ref.read(groupListProvider.notifier).load();
+    messenger.showSnackBar(SnackBar(content: Text(report.toString())));
+  }
+
+  /// Runs an action that touches the OS, reporting failures instead of leaving
+  /// the switch in a state that does not match reality.
+  static Future<void> _guard(
+    BuildContext context,
+    Future<void> Function() action,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await action();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('$e'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
+    }
+  }
+
+  void _editInt(
+    BuildContext context, {
+    required String title,
+    required int initial,
+    required Future<void> Function(int) onSave,
+  }) {
+    final ctrl = TextEditingController(text: initial.toString());
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
         title: Text(title),
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.number,
+          autofocus: true,
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              final v = int.tryParse(ctrl.text);
-              if (v != null) ref.read(provider.notifier).state = v;
-              Navigator.pop(context);
+            onPressed: () async {
+              final v = int.tryParse(ctrl.text.trim());
+              final messenger = ScaffoldMessenger.of(context);
+              if (v == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Please enter a number')),
+                );
+                return;
+              }
+              Navigator.pop(dialogContext);
+              try {
+                await onSave(v);
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('$e')));
+              }
             },
             child: const Text('Save'),
           ),
@@ -177,26 +332,36 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  void _editString(BuildContext context, WidgetRef ref, String title,
-      StateProvider<String> provider) {
-    final ctrl = TextEditingController(text: ref.read(provider));
-    showDialog(
+  void _editString(
+    BuildContext context, {
+    required String title,
+    required String initial,
+    required Future<void> Function(String) onSave,
+  }) {
+    final ctrl = TextEditingController(text: initial);
+    showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(title),
         content: TextField(
           controller: ctrl,
+          autofocus: true,
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
-              ref.read(provider.notifier).state = ctrl.text;
-              Navigator.pop(context);
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                await onSave(ctrl.text);
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('$e')));
+              }
             },
             child: const Text('Save'),
           ),

@@ -1,0 +1,168 @@
+// Application settings: persisted to <appDir>/settings.json.
+//
+// These were previously plain in-memory StateProviders — every value was lost
+// on restart and none of the toggles did anything. They are now backed by
+// [LocalStore] and the ones that can be honoured on the current platform are
+// applied by [SystemIntegration].
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../storage/local_store.dart';
+import '../system/system_integration.dart';
+
+class AppSettings {
+  final bool systemProxy;
+  final bool tunMode;
+  final bool autoStart;
+  final bool minimizeToTray;
+  final int corePort; // 0 = let the core pick an ephemeral port
+  final int mixedPort;
+  final String listenAddress;
+  final String logLevel;
+  final String locale;
+  final bool checkPreRelease;
+
+  const AppSettings({
+    this.systemProxy = false,
+    this.tunMode = false,
+    this.autoStart = false,
+    this.minimizeToTray = true,
+    this.corePort = 0,
+    this.mixedPort = 2080,
+    this.listenAddress = '127.0.0.1',
+    this.logLevel = 'info',
+    this.locale = 'zh',
+    this.checkPreRelease = false,
+  });
+
+  AppSettings copyWith({
+    bool? systemProxy,
+    bool? tunMode,
+    bool? autoStart,
+    bool? minimizeToTray,
+    int? corePort,
+    int? mixedPort,
+    String? listenAddress,
+    String? logLevel,
+    String? locale,
+    bool? checkPreRelease,
+  }) =>
+      AppSettings(
+        systemProxy: systemProxy ?? this.systemProxy,
+        tunMode: tunMode ?? this.tunMode,
+        autoStart: autoStart ?? this.autoStart,
+        minimizeToTray: minimizeToTray ?? this.minimizeToTray,
+        corePort: corePort ?? this.corePort,
+        mixedPort: mixedPort ?? this.mixedPort,
+        listenAddress: listenAddress ?? this.listenAddress,
+        logLevel: logLevel ?? this.logLevel,
+        locale: locale ?? this.locale,
+        checkPreRelease: checkPreRelease ?? this.checkPreRelease,
+      );
+
+  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
+        systemProxy: j['system_proxy'] == true,
+        tunMode: j['tun_mode'] == true,
+        autoStart: j['auto_start'] == true,
+        minimizeToTray: j['minimize_to_tray'] != false,
+        corePort: _int(j['core_port'], 0),
+        mixedPort: _int(j['mixed_port'], 2080),
+        listenAddress: (j['listen_address'] as String?) ?? '127.0.0.1',
+        logLevel: (j['log_level'] as String?) ?? 'info',
+        locale: (j['locale'] as String?) ?? 'zh',
+        checkPreRelease: j['check_pre_release'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'system_proxy': systemProxy,
+        'tun_mode': tunMode,
+        'auto_start': autoStart,
+        'minimize_to_tray': minimizeToTray,
+        'core_port': corePort,
+        'mixed_port': mixedPort,
+        'listen_address': listenAddress,
+        'log_level': logLevel,
+        'locale': locale,
+        'check_pre_release': checkPreRelease,
+      };
+
+  static int _int(Object? v, int fallback) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? fallback;
+    return fallback;
+  }
+}
+
+final settingsProvider =
+    StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier());
+
+class SettingsNotifier extends StateNotifier<AppSettings> {
+  SettingsNotifier() : super(const AppSettings());
+
+  bool _loaded = false;
+  bool get isLoaded => _loaded;
+
+  Future<void> load() async {
+    try {
+      state = AppSettings.fromJson(await LocalStore.loadSettings());
+    } catch (_) {
+      state = const AppSettings();
+    } finally {
+      _loaded = true;
+    }
+  }
+
+  Future<void> _persist(AppSettings next) async {
+    state = next;
+    await LocalStore.saveSettings(next.toJson());
+  }
+
+  Future<void> setMinimizeToTray(bool v) =>
+      _persist(state.copyWith(minimizeToTray: v));
+
+  Future<void> setMixedPort(int v) async {
+    if (v < 1 || v > 65535) {
+      throw ArgumentError('Port must be between 1 and 65535');
+    }
+    await _persist(state.copyWith(mixedPort: v));
+  }
+
+  Future<void> setCorePort(int v) async {
+    if (v != 0 && (v < 1024 || v > 65535)) {
+      throw ArgumentError('Core port must be 0 (auto) or between 1024 and 65535');
+    }
+    await _persist(state.copyWith(corePort: v));
+  }
+
+  Future<void> setListenAddress(String v) =>
+      _persist(state.copyWith(listenAddress: v.trim()));
+
+  Future<void> setLogLevel(String v) => _persist(state.copyWith(logLevel: v));
+
+  Future<void> setLocale(String v) => _persist(state.copyWith(locale: v));
+
+  Future<void> setCheckPreRelease(bool v) =>
+      _persist(state.copyWith(checkPreRelease: v));
+
+  Future<void> setTunMode(bool v) => _persist(state.copyWith(tunMode: v));
+
+  /// Applies the OS-level auto-start entry, then records the outcome.
+  Future<void> setAutoStart(bool v) async {
+    await SystemIntegration.setAutoStart(v);
+    await _persist(state.copyWith(autoStart: v));
+  }
+
+  /// Applies the OS-level proxy setting. Only stored if it actually took.
+  Future<void> setSystemProxy(bool v) async {
+    if (v) {
+      await SystemIntegration.enableSystemProxy(
+        host: state.listenAddress,
+        port: state.mixedPort,
+      );
+    } else {
+      await SystemIntegration.disableSystemProxy();
+    }
+    await _persist(state.copyWith(systemProxy: v));
+  }
+}

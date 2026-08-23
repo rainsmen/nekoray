@@ -1,8 +1,8 @@
-// Connections page (task 13) — shows active connections + traffic chart.
+// Connections page — traffic chart driven by the core's stats counters.
 //
-// ListConnections is currently a stub in the Go core (returns empty), so this
-// page polls QueryStats for traffic display. Full connection listing will be
-// implemented in Phase 3 when the Clash API is wired in.
+// ListConnections is still a stub in the Go core (it needs the Clash API), so
+// this page shows throughput only and says so plainly rather than presenting an
+// empty table as if it were "no connections".
 
 import 'dart:async';
 
@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
 
-/// Traffic data point (timestamp, bytes).
+/// One sample of throughput, in bytes per second.
 class TrafficPoint {
   final DateTime time;
   final int up;
@@ -20,7 +20,7 @@ class TrafficPoint {
   TrafficPoint(this.time, this.up, this.down);
 }
 
-/// Rolling traffic history (last 60 points = 60 seconds).
+/// Rolling traffic history (last 60 samples ≈ 60 seconds).
 final trafficHistoryProvider =
     StateNotifierProvider<TrafficHistoryNotifier, List<TrafficPoint>>(
   (ref) => TrafficHistoryNotifier(ref),
@@ -30,25 +30,50 @@ class TrafficHistoryNotifier extends StateNotifier<List<TrafficPoint>> {
   final Ref _ref;
   Timer? _timer;
 
-  TrafficHistoryNotifier(this._ref) : super([]) {
+  // QueryStats returns cumulative byte counters. Plotting those directly drew
+  // a monotonically rising line labelled "B/s"; rates are the deltas.
+  int? _lastUp;
+  int? _lastDown;
+  bool _polling = false;
+
+  TrafficHistoryNotifier(this._ref) : super(const []) {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
   }
 
   Future<void> _poll() async {
+    if (_polling) return; // don't queue polls behind a slow core
     final client = _ref.read(grpcClientProvider);
-    if (!client.isConnected) return;
+    if (!client.isConnected) {
+      _lastUp = null;
+      _lastDown = null;
+      return;
+    }
+
+    _polling = true;
     try {
-      final upResp = await client.queryStats('outbound', 'uplink');
-      final downResp = await client.queryStats('outbound', 'downlink');
+      final upResp = await client.queryStats('proxy', 'uplink');
+      final downResp = await client.queryStats('proxy', 'downlink');
+      final up = upResp.traffic.toInt();
+      final down = downResp.traffic.toInt();
+
+      final prevUp = _lastUp;
+      final prevDown = _lastDown;
+      _lastUp = up;
+      _lastDown = down;
+      if (prevUp == null || prevDown == null) return; // need two samples
+
+      // Counters reset when the instance restarts; clamp to zero.
       final point = TrafficPoint(
         DateTime.now(),
-        upResp.traffic.toInt(),
-        downResp.traffic.toInt(),
+        (up - prevUp).clamp(0, 1 << 62),
+        (down - prevDown).clamp(0, 1 << 62),
       );
-      state = [...state, point];
-      if (state.length > 60) state = state.sublist(state.length - 60);
+      final next = [...state, point];
+      state = next.length > 60 ? next.sublist(next.length - 60) : next;
     } catch (_) {
-      // ignore transient errors
+      // Transient failures are expected while the core restarts.
+    } finally {
+      _polling = false;
     }
   }
 
@@ -104,16 +129,26 @@ class ConnectionsPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // Connections table placeholder
           const Expanded(
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.link_off, size: 48),
-                  SizedBox(height: 8),
-                  Text('Connection listing requires Clash API (Phase 3)'),
-                ],
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.link_off, size: 48),
+                    SizedBox(height: 12),
+                    Text('Per-connection listing is not implemented',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    SizedBox(height: 6),
+                    Text(
+                      'The core returns an empty list: connection tracking '
+                      'needs the Clash API, which is not wired up yet. '
+                      'Throughput above is live.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

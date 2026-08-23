@@ -1,8 +1,11 @@
+# Build outputs — never ignore *.json here: it would silently drop test
+# fixtures and config samples from the repository.
 *.log
 *.pem
-*.json
 *.exe
 *.dat
-/cmd/nekoray_core/nekoray_core
-/cmd/nekobox_core/nekobox_core
 *.db
+/cmd/nekobox_core/nekobox_core
+/cmd/updater/updater
+/cmd/updater/launcher
+/cmd/migrator/migrator

@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
-	"net/url"
+	"sync"
 	"time"
 
 	box "github.com/sagernet/sing-box"
@@ -12,6 +13,7 @@ import (
 	"github.com/sagernet/sing/common/metadata"
 )
 
+var instanceMu sync.RWMutex
 var instance *box.Box
 var instanceCtx context.Context
 var instanceCancel context.CancelFunc
@@ -87,6 +89,7 @@ func urlTest(client *http.Client, target string, timeout int) (int, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return int(time.Since(start).Milliseconds()), nil
 }
 
@@ -125,10 +128,10 @@ func createSystemHttpClient() *http.Client {
 // resolveProxyClient returns an HTTP client: through the box if running,
 // otherwise a direct system client.
 func resolveProxyClient() *http.Client {
+	instanceMu.RLock()
+	defer instanceMu.RUnlock()
 	if instance != nil {
 		return newProxyHttpClient(instance)
 	}
 	return createSystemHttpClient()
 }
-
-var _ = url.Parse // keep net/url import for future use

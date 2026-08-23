@@ -1,41 +1,47 @@
-// Data migration from old C++ nekoray config (task 16).
+// Data migration from an older nekoray configuration directory.
 //
-// Reads profiles/*.json, groups/*.json, routing_*.json from the old config
-// directory and imports them into the new Flutter LocalStore.
+// All I/O is asynchronous: the previous implementation used listSync /
+// readAsStringSync on the UI isolate, which froze the app for the duration of
+// the scan.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
-import '../storage/local_store.dart';
+import '../models/profile.dart';
+import 'local_store.dart';
 
 class DataMigration {
-  /// Scans [oldDir] for old nekoray config files and imports them.
+  /// Scans [oldDir] for nekoray config files and imports them.
   ///
-  /// Returns a summary of what was migrated.
-  static Future<MigrationReport> migrateFromCppVersion(
+  /// Profiles are written as one batch so a failure cannot leave a partial
+  /// import behind. Ids are reallocated to avoid colliding with profiles that
+  /// already exist in the destination.
+  static Future<MigrationReport> migrateFrom(
     String oldDir, {
     bool dryRun = false,
   }) async {
     final report = MigrationReport();
 
     final oldRoot = Directory(oldDir);
-    if (!oldRoot.existsSync()) {
+    if (!await oldRoot.exists()) {
       report.errors.add('Source directory does not exist: $oldDir');
       return report;
     }
 
-    // migrate profiles
+    // --- profiles ---
+    final profileMaps = <Map<String, dynamic>>[];
     final oldProfiles = Directory('$oldDir/profiles');
-    if (oldProfiles.existsSync()) {
-      for (final f in oldProfiles.listSync()) {
+    if (await oldProfiles.exists()) {
+      await for (final f in oldProfiles.list()) {
         if (f is! File || !f.path.endsWith('.json')) continue;
         try {
-          final json = jsonDecode(f.readAsStringSync());
+          final json = jsonDecode(await f.readAsString());
           if (json is Map<String, dynamic>) {
-            if (!dryRun) await LocalStore.saveProfile(json);
-            report.profiles++;
+            profileMaps.add(json);
+          } else {
+            report.errors.add('profile ${f.path}: not a JSON object');
           }
         } catch (e) {
           report.errors.add('profile ${f.path}: $e');
@@ -43,15 +49,40 @@ class DataMigration {
       }
     }
 
-    // migrate groups
+    if (profileMaps.isNotEmpty && !dryRun) {
+      try {
+        final ids = await LocalStore.allocateProfileIds(profileMaps.length);
+        final entities = <Map<String, dynamic>>[];
+        for (var i = 0; i < profileMaps.length; i++) {
+          final e = ProxyEntity.fromJson(profileMaps[i]);
+          entities.add(ProxyEntity(
+            id: ids[i],
+            gid: e.gid,
+            type: e.type,
+            bean: e.bean,
+            latency: e.latency,
+          ).toJson());
+        }
+        await LocalStore.saveProfiles(entities);
+        report.profiles = entities.length;
+      } catch (e) {
+        report.errors.add('writing profiles: $e');
+      }
+    } else {
+      report.profiles = profileMaps.length;
+    }
+
+    // --- groups ---
     final oldGroups = Directory('$oldDir/groups');
-    if (oldGroups.existsSync()) {
-      for (final f in oldGroups.listSync()) {
+    if (await oldGroups.exists()) {
+      await for (final f in oldGroups.list()) {
         if (f is! File || !f.path.endsWith('.json')) continue;
         try {
-          final json = jsonDecode(f.readAsStringSync());
+          final json = jsonDecode(await f.readAsString());
           if (json is Map<String, dynamic>) {
-            if (!dryRun) await LocalStore.saveGroup(json);
+            if (!dryRun) {
+              await LocalStore.saveGroup(ProfileGroup.fromJson(json).toJson());
+            }
             report.groups++;
           }
         } catch (e) {
@@ -60,15 +91,16 @@ class DataMigration {
       }
     }
 
-    // migrate routing files
-    for (final entry in oldRoot.listSync()) {
+    // --- routing ---
+    await for (final entry in oldRoot.list()) {
       if (entry is! File) continue;
-      final name = entry.path.split('/').last;
+      final name = entry.path.replaceAll('\\', '/').split('/').last;
       if (!name.startsWith('routing_') || !name.endsWith('.json')) continue;
       try {
-        final json = jsonDecode(entry.readAsStringSync());
+        final json = jsonDecode(await entry.readAsString());
         if (json is Map<String, dynamic>) {
-          final routingName = name.replaceAll('routing_', '').replaceAll('.json', '');
+          final routingName =
+              name.substring('routing_'.length, name.length - '.json'.length);
           if (!dryRun) await LocalStore.saveRouting(routingName, json);
           report.routing++;
         }
@@ -80,31 +112,30 @@ class DataMigration {
     return report;
   }
 
-  /// Detects the old nekoray config directory based on platform.
+  /// Detects an older nekoray config directory for the current platform.
   static Future<String?> detectOldConfigDir() async {
-    // Common locations for old nekoray config
     final candidates = <String>[];
 
     final support = await getApplicationSupportDirectory();
     candidates.add('${support.path}/nekoray_old');
 
-    // Platform-specific paths
+    final home = Platform.environment['HOME'];
     if (Platform.isWindows) {
-      candidates.add('${Platform.environment['APPDATA']}/nekoray');
-    } else if (Platform.isLinux) {
-      candidates.add('${Platform.environment['HOME']}/.config/nekoray');
-    } else if (Platform.isMacOS) {
-      candidates.add('${Platform.environment['HOME']}/Library/Application Support/nekoray');
+      final appData = Platform.environment['APPDATA'];
+      if (appData != null) candidates.add('$appData/nekoray');
+    } else if (Platform.isLinux && home != null) {
+      candidates.add('$home/.config/nekoray');
+    } else if (Platform.isMacOS && home != null) {
+      candidates.add('$home/Library/Application Support/nekoray');
     }
 
+    final current = await LocalStore.rootPath();
     for (final path in candidates) {
-      final dir = Directory(path);
-      if (dir.existsSync()) {
-        // Check for profiles or groups dir to confirm it's a nekoray config
-        if (Directory('$path/profiles').existsSync() ||
-            Directory('$path/groups').existsSync()) {
-          return path;
-        }
+      if (path == current) continue; // never "migrate" onto ourselves
+      if (!await Directory(path).exists()) continue;
+      if (await Directory('$path/profiles').exists() ||
+          await Directory('$path/groups').exists()) {
+        return path;
       }
     }
     return null;
@@ -116,6 +147,8 @@ class MigrationReport {
   int groups = 0;
   int routing = 0;
   final List<String> errors = [];
+
+  bool get hasErrors => errors.isNotEmpty;
 
   @override
   String toString() =>
