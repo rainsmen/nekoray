@@ -71,7 +71,7 @@ case "$TARGET" in
     ;;
   windows)
     ARCHIVE="deployment/nekoray-$VERSION-windows64.zip"
-    (cd "$STAGING" && zip -r "../$(basename $ARCHIVE)" nekoray)
+    (cd "$STAGING" && powershell Compress-Archive -Path nekoray -DestinationPath "../../$(basename $ARCHIVE)")
     echo "==> Created $ARCHIVE"
     ;;
   macos)
