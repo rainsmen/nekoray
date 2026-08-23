@@ -198,18 +198,14 @@ func urlLatency(client *http.Client, target string, timeout int) int {
 
 // udpDial dials a UDP connection through the proxy instance if available.
 // Uses the injected factory; falls back to direct dialing.
-var udpDial func(ctx context.Context, instance interface{}, addr string) (net.PacketConn, error) =
-	func(ctx context.Context, instance interface{}, addr string) (net.PacketConn, error) {
+var udpDial func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) =
+	func(ctx context.Context, instance interface{}, addr string) (net.Conn, error) {
 		var d net.Dialer
-		c, err := d.DialContext(ctx, "udp", addr)
-		if err != nil {
-			return nil, err
-		}
-		return c.(net.PacketConn), nil
+		return d.DialContext(ctx, "udp", addr)
 	}
 
 // SetUdpDialFunc allows the core to inject a UDP dialer that routes
 // through the sing-box instance.
-func SetUdpDialFunc(f func(ctx context.Context, instance interface{}, addr string) (net.PacketConn, error)) {
+func SetUdpDialFunc(f func(ctx context.Context, instance interface{}, addr string) (net.Conn, error)) {
 	udpDial = f
 }
