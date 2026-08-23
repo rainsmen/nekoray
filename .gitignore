@@ -1,87 +1,39 @@
-# This file is used to ignore files which are generated
-# ----------------------------------------------------------------------------
-
-*~
-*.autosave
-*.a
-*.core
-*.moc
-*.o
-*.obj
-*.orig
-*.rej
-*.so
-*.so.*
-*_pch.h.cpp
-*_resource.rc
-.#*
-*.*#
-core
-!core/
-tags
-.DS_Store
-.directory
-*.debug
-/Makefile*
-*.prl
-*.app
-moc_*.cpp
-ui_*.h
-qrc_*.cpp
-Thumbs.db
-*.res
-/.qmake.cache
-/.qmake.stash
-
-# qtcreator generated files
-*.pro.user*
-
-# xemacs temporary files
-*.flc
-
-# Vim temporary files
-.*.swp
-
-# Visual Studio generated files
-*.ib_pdb_index
-*.idb
-*.ilk
-*.pdb
-*.sln
-*.suo
-*.vcproj
-*vcproj.*.*.user
-*.ncb
-*.sdf
-*.opensdf
-*.vcxproj
-*vcxproj.*
-
-# MinGW generated files
-*.Debug
-*.Release
-
-# Python byte code
-*.pyc
-
-# Binaries
-# --------
-*.dll
-*.exe
-
-# Custom
-/nekoray
+# === Build outputs ===
 /build
-CMakeLists.txt.user*
-/cmake-build-*
 /build-*
+/deployment
+/out
+
+# === Go ===
+*.exe
+*.dll
+*.so
+*.dylib
+sing-box/
+libneko/
+sing-quic/
+
+# === Flutter ===
+nekoray_flutter/.dart_tool/
+nekoray_flutter/.packages
+nekoray_flutter/build/
+nekoray_flutter/.flutter-plugins
+nekoray_flutter/.flutter-plugins-dependencies
+nekoray_flutter/ios/Pods/
+nekoray_flutter/android/.gradle/
+nekoray_flutter/android/app/build/
+nekoray_flutter/android/local.properties
+
+# === IDE / Editor ===
 .vscode
 .idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
-# Deploy
-/deployment
-/neko*.sh
-/qtsdk
-
-.vs
-out
+# === Misc ===
+*.log
+*.tmp
+neko.log

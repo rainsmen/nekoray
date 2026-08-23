@@ -1,119 +1,162 @@
-# NekoBox For PC
+# NekoRay
 
-Qt based cross-platform GUI proxy configuration manager (backend: sing-box)
+> Cross-platform proxy client built with **Flutter** + **sing-box** Go core.
 
-Support Windows / Linux out of the box now.
+[![CI: Build Go Core](https://github.com/rainsmen/nekoray/actions/workflows/build-go-core.yml/badge.svg)](https://github.com/rainsmen/nekoray/actions/workflows/build-go-core.yml)
+[![CI: Build Flutter](https://github.com/rainsmen/nekoray/actions/workflows/build-flutter.yml/badge.svg)](https://github.com/rainsmen/nekoray/actions/workflows/build-flutter.yml)
+[![CI: Lint & Test](https://github.com/rainsmen/nekoray/actions/workflows/lint-test.yml/badge.svg)](https://github.com/rainsmen/nekoray/actions/workflows/lint-test.yml)
+[![Release](https://img.shields.io/github/v/release/rainsmen/nekoray?include_prereleases)](https://github.com/rainsmen/nekoray/releases)
 
-基于 Qt 的跨平台代理配置管理器 (后端 sing-box)
+A modern, cross-platform proxy configuration manager. The GUI is written in
+Flutter (Material 3), and the proxy core is [sing-box](https://github.com/SagerNet/sing-box)
+v1.13.19. The two communicate over gRPC.
 
-目前支持 Windows / Linux 开箱即用
+This is a fork of [MatsuriDayo/nekoray](https://github.com/MatsuriDayo/nekoray)
+that has been **fully rewritten** — the legacy C++/Qt UI is replaced by
+Flutter, and all business logic (config building, subscription parsing,
+rule-set management) has been sunk into the Go core.
 
 ## 下载 / Download
 
-### GitHub Releases (Portable ZIP)
+[![GitHub Releases](https://img.shields.io/github/downloads/rainsmen/nekoray/total?label=downloads&logo=github)](https://github.com/rainsmen/nekoray/releases)
 
-便携格式，无安装器。转到 Releases 下载预编译的二进制文件，解压后即可使用。
+前往 [Releases](https://github.com/rainsmen/nekoray/releases) 页面下载最新版本：
 
-[![GitHub All Releases](https://img.shields.io/github/downloads/Matsuridayo/nekoray/total?label=downloads-total&logo=github&style=flat-square)](https://github.com/Matsuridayo/nekoray/releases)
+| 平台 | 文件 |
+|------|------|
+| Windows | `nekoray-*-windows64.zip` |
+| Linux | `nekoray-*-linux64.tar.gz` |
+| macOS | `nekoray-*-macos.zip` |
+| Android (arm64) | `nekoray-*-android-arm64-v8a.apk` |
+| Android (armv7) | `nekoray-*-android-armeabi-v7a.apk` |
+| Android (x86_64) | `nekoray-*-android-x86_64.apk` |
 
-[下载 / Download](https://github.com/Matsuridayo/nekoray/releases)
+## 架构 / Architecture
 
-[安装包的说明，如果你不知道要下载哪一个](https://github.com/MatsuriDayo/nekoray/wiki/Installation-package-description)
+```
+┌─────────────────────────────────────────────┐
+│  Flutter UI (Dart)                          │
+│  Material 3 · Riverpod · gRPC client        │
+└──────────────────┬──────────────────────────┘
+                   │ gRPC (localhost)
+┌──────────────────▼──────────────────────────┐
+│  nekobox_core (Go)                          │
+│  sing-box v1.13.19 · ConfigBuilder          │
+│  Subscription parser · rule_set manager     │
+└─────────────────────────────────────────────┘
+```
 
-### Package
+**核心设计**：Flutter 是瘦客户端，所有代理逻辑在 Go core 中。gRPC 是唯一通信接口。
 
-#### AUR
+详见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-- [nekoray](https://aur.archlinux.org/packages/nekoray)
-- [nekoray-git](https://aur.archlinux.org/packages/nekoray-git)
+## 代理协议 / Proxy Protocols
 
-#### archlinuxcn
-
-- [nekoray](https://github.com/archlinuxcn/repo/tree/master/archlinuxcn/nekoray)
-- [nekoray-git](https://github.com/archlinuxcn/repo/tree/master/archlinuxcn/nekoray-git)
-
-#### Scoop Extras
-
-`scoop install nekoray`
-
-## 更改记录 & 发布频道 / Changelog & Telegram Channel
-
-https://t.me/Matsuridayo
-
-## 项目主页 & 文档 / Homepage & Documents
-
-https://matsuridayo.github.io
-
-## 代理 / Proxy
-
-- SOCKS (4/4a/5)
-- HTTP(S)
 - Shadowsocks
 - VMess
-- VLESS
+- VLESS (含 Reality / xtls-rprx-vision)
 - Trojan
-- TUIC ( sing-box )
-- NaïveProxy ( Custom Core )
-- Hysteria2 ( Custom Core or sing-box )
-- Custom Outbound
-- Custom Config
-- Custom Core
+- Hysteria2
+- TUIC
+- WireGuard
+- SSH
+- SOCKS / HTTP
+- Custom Outbound / Custom Config
 
-## 订阅 / Subscription
+## 功能 / Features
 
-- Raw: some widely used formats (like Shadowsocks, Clash and v2rayN)
-- 原始格式: 一些广泛使用的格式 (如 Shadowsocks、Clash 和 v2rayN)
+- **节点管理**：增删改查、分组、搜索、延迟测试
+- **订阅**：自动解析 (ss/vmess/vless/trojan 链接、Clash YAML、SIP008、Base64)
+- **路由**：可视化规则编辑器
+- **DNS**：预设方案 (绕过国内 / 全局 / 自定义)
+- **连接监控**：实时流量图表 (fl_chart)
+- **rule_set**：远程规则集订阅 (MRS 格式)
+- **数据迁移**：从旧版 C++ nekoray 导入配置
+- **国际化**：中文 / English
+- **跨平台**：Windows / Linux / macOS / Android
 
-## 运行参数
+## 项目结构 / Project Structure
 
-[运行参数](docs/RunFlags.md)
+```
+nekoray/
+├── go/                         # Go core (sing-box + gRPC server)
+│   ├── cmd/nekobox_core/       # 核心进程入口
+│   ├── cmd/migrator/           # 数据迁移工具 (CLI)
+│   ├── cmd/updater/            # 自动更新器
+│   └── grpc_server/            # gRPC 服务 + 业务逻辑
+│       ├── core/config/        # ConfigBuilder (sing-box 配置生成)
+│       ├── core/fmt/            # Bean 数据模型
+│       ├── core/sub/            # 订阅解析
+│       └── core/ruleset/       # rule_set 管理
+├── nekoray_flutter/            # Flutter 桌面/移动端 UI
+│   └── lib/
+│       ├── core/               # gRPC 客户端、数据模型、存储、i18n
+│       └── ui/                 # 页面、组件、主题
+├── libs/                       # 构建脚本
+├── .github/workflows/          # CI/CD
+└── docs/                       # 文档
+```
 
-## Windows 运行
+## 编译 / Build
 
-若提示 DLL 缺失，无法运行，请下载 安装 [微软 C++ 运行库](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+所有编译通过 GitHub Actions 完成，无需本地工具链。
 
-## Linux 运行
+### Go Core
 
-[Linux 运行教程](docs/Run_Linux.md)
+```bash
+# 本地编译 (需 Go 1.22+)
+cd go/cmd/nekobox_core
+go mod tidy
+go build -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
+```
 
-## 编译教程 / Compile Tutorial
+### Flutter App
 
-请看 [技术文档 / Technical documentation](https://github.com/MatsuriDayo/nekoray/tree/main/docs)
+```bash
+cd nekoray_flutter
+flutter pub get
+flutter run -d windows   # or linux / macos / chrome
+```
 
-## 捐助 / Donate
+### CI 触发
 
-如果这个项目对您有帮助，可以通过捐赠的方式帮助我们维持这个项目。
+```bash
+# 构建 Go core (4 平台)
+gh workflow run "Build Go Core" --repo rainsmen/nekoray --ref dev
 
-捐赠满等额 50 USD 可以在「[捐赠榜](https://mtrdnt.pages.dev/donation_list)」显示头像，如果您未被添加到这里，欢迎联系我们补充。
+# 构建 Flutter (3 桌面端)
+gh workflow run "Build Flutter" --repo rainsmen/nekoray --ref dev
 
-Donations of 50 USD or more can display your avatar on the [Donation List](https://mtrdnt.pages.dev/donation_list). If you are not added here, please contact us to add it.
+# 一键发布
+gh workflow run "Release" --repo rainsmen/nekoray --ref dev \
+  -f tag=v5.0.0 -f prerelease=false
+```
 
-USDT TRC20
+## 文档 / Documentation
 
-`TRhnA7SXE5Sap5gSG3ijxRmdYFiD4KRhPs`
-
-XMR
-
-`49bwESYQjoRL3xmvTcjZKHEKaiGywjLYVQJMUv79bXonGiyDCs8AzE3KiGW2ytTybBCpWJUvov8SjZZEGg66a4e59GXa6k5`
+- [架构说明](docs/ARCHITECTURE.md)
+- [技术决策记录](docs/DECISIONS.md)
+- [实施进度](docs/实施进度.md)
+- [迁移实施计划](docs/Flutter迁移实施计划.md)
+- [可行性分析报告](docs/Flutter迁移可行性分析报告.md)
+- [变更日志](CHANGELOG.md)
 
 ## Credits
 
-Core:
+**Core:**
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box) v1.13.19
 
-- [v2fly/v2ray-core](https://github.com/v2fly/v2ray-core) ( < 3.10 )
-- [MatsuriDayo/Matsuri](https://github.com/MatsuriDayo/Matsuri) ( < 3.10 )
-- [MatsuriDayo/v2ray-core](https://github.com/MatsuriDayo/v2ray-core) ( < 3.10 )
-- [XTLS/Xray-core](https://github.com/XTLS/Xray-core) ( 3.10 <= Version <= 3.26 )
-- [MatsuriDayo/Xray-core](https://github.com/MatsuriDayo/Xray-core) ( 3.10 <= Version <= 3.26 )
-- [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
-- [Matsuridayo/sing-box-extra](https://github.com/MatsuriDayo/sing-box-extra)
+**UI:**
+- [Flutter](https://flutter.dev)
+- [Riverpod](https://riverpod.dev) (状态管理)
+- [fl_chart](https://github.com/imaNNeo/fl_chart) (图表)
+- [grpc-dart](https://github.com/grpc/grpc-dart) (gRPC)
+- [tray_manager](https://github.com/leanflutter/tray_manager) (系统托盘)
+- [window_manager](https://github.com/leanflutter/window_manager) (窗口控制)
 
-Gui:
+**Original project:**
+- [MatsuriDayo/nekoray](https://github.com/MatsuriDayo/nekoray) — C++/Qt 原版
 
-- [Qv2ray](https://github.com/Qv2ray/Qv2ray)
-- [Qt](https://www.qt.io/)
-- [protobuf](https://github.com/protocolbuffers/protobuf)
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp)
-- [zxing-cpp](https://github.com/nu-book/zxing-cpp)
-- [QHotkey](https://github.com/Skycoder42/QHotkey)
-- [AppImageKit](https://github.com/AppImage/AppImageKit)
+## License
+
+GPL-3.0, 继承自上游项目。

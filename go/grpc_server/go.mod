@@ -4,7 +4,6 @@ go 1.22
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/matsuridayo/libneko v1.0.0 // replaced
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -18,5 +17,3 @@ require (
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
 )
-
-replace github.com/matsuridayo/libneko v1.0.0 => ../../../libneko

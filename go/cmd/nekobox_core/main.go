@@ -3,30 +3,48 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"grpc_server"
 
-	"github.com/matsuridayo/libneko/neko_common"
 	"github.com/sagernet/sing-box/constant"
 )
 
 func main() {
-	fmt.Println("sing-box:", constant.Version, "NekoBox:", neko_common.Version_neko)
+	fmt.Printf("sing-box: %s  NekoBox core: %s\n", constant.Version, CoreVersion)
 	fmt.Println()
 
-	// nekobox_core: run as gRPC server for the GUI
+	// Parse args: nekobox_core nekobox [--token TOKEN] [--port PORT] [--debug]
 	if len(os.Args) > 1 && os.Args[1] == "nekobox" {
-		neko_common.RunMode = neko_common.RunMode_NekoBox_Core
-		grpc_server.RunCore(setupCore, &server{})
+		token, port := parseArgs(os.Args[2:])
+		grpc_server.RunCore(token, port, Debug, &server{})
 		return
 	}
 
-	// Otherwise, fall back to a basic sing-box CLI passthrough.
-	//
-	// NOTE: upstream sing-box (>= 1.11) ships cmd/sing-box as package main
-	// with no exported entry point, so we no longer delegate to boxmain.Main().
-	// A minimal run command is provided for ad-hoc usage; for the full CLI
-	// users should use the official sing-box binary.
 	fmt.Println("usage: nekobox_core nekobox [--token TOKEN] [--port PORT] [--debug]")
 	os.Exit(0)
+}
+
+// parseArgs extracts --token, --port, --debug from the argument list.
+func parseArgs(args []string) (token string, port int) {
+	port = 19821 // default gRPC port
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--token":
+			if i+1 < len(args) {
+				token = args[i+1]
+				i++
+			}
+		case "--port":
+			if i+1 < len(args) {
+				if p, err := strconv.Atoi(args[i+1]); err == nil {
+					port = p
+				}
+				i++
+			}
+		case "--debug":
+			Debug = true
+		}
+	}
+	return
 }

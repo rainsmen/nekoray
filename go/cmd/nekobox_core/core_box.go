@@ -4,12 +4,10 @@ import (
 	"context"
 	"net"
 	"net/http"
-
-	"github.com/matsuridayo/libneko/neko_common"
-	"github.com/matsuridayo/libneko/neko_log"
+	"net/url"
+	"time"
 
 	box "github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/metadata"
 )
 
@@ -17,48 +15,11 @@ var instance *box.Box
 var instanceCtx context.Context
 var instanceCancel context.CancelFunc
 
-// setupCore wires the libneko callbacks to use the running sing-box instance.
-//
-// On upstream sing-box (>= 1.11), the Box instance exposes Router()/Outbound()
-// directly. The legacy MatsuriDayo boxapi helpers are replaced with the
-// upstream common/dialer package and the service registry.
-func setupCore() {
-	neko_log.SetupLog(50*1024, "./neko.log")
+// CoreVersion is the nekobox_core version (printed on startup).
+const CoreVersion = "5.0.0"
 
-	neko_common.GetCurrentInstance = func() interface{} {
-		return instance
-	}
-
-	neko_common.DialContext = func(ctx context.Context, specifiedInstance interface{}, network, addr string) (net.Conn, error) {
-		if b, ok := specifiedInstance.(*box.Box); ok {
-			return dialThroughBox(ctx, b, network, addr)
-		}
-		if instance != nil {
-			return dialThroughBox(ctx, instance, network, addr)
-		}
-		return neko_common.DialContextSystem(ctx, network, addr)
-	}
-
-	neko_common.DialUDP = func(ctx context.Context, specifiedInstance interface{}) (net.PacketConn, error) {
-		if b, ok := specifiedInstance.(*box.Box); ok {
-			return listenPacketThroughBox(ctx, b)
-		}
-		if instance != nil {
-			return listenPacketThroughBox(ctx, instance)
-		}
-		return neko_common.DialUDPSystem(ctx)
-	}
-
-	neko_common.CreateProxyHttpClient = func(specifiedInstance interface{}) *http.Client {
-		if b, ok := specifiedInstance.(*box.Box); ok {
-			return newProxyHttpClient(b)
-		}
-		if instance != nil {
-			return newProxyHttpClient(instance)
-		}
-		return neko_common.CreateProxyHttpClient(nil)
-	}
-}
+// Debug toggles verbose logging (set via --debug flag).
+var Debug bool
 
 // dialThroughBox dials a connection through the default outbound of the Box instance.
 func dialThroughBox(ctx context.Context, b *box.Box, network, addr string) (net.Conn, error) {
@@ -78,16 +39,10 @@ func newProxyHttpClient(b *box.Box) *http.Client {
 			return dialThroughBox(ctx, b, network, addr)
 		},
 	}
-	return &http.Client{
-		Transport: transport,
-	}
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}
 }
 
 // createInstance creates a sing-box instance from JSON config and starts it.
-//
-// This replaces the legacy boxmain.Create helper from the MatsuriDayo fork.
-// On upstream sing-box, box.New does not call Start automatically, so we do
-// it here and return a cancel function along with the instance context.
 func createInstance(configContent []byte) (*box.Box, context.CancelFunc, context.Context, error) {
 	var options option.Options
 	err := options.UnmarshalJSONContext(context.Background(), configContent)
@@ -115,4 +70,64 @@ func createInstance(configContent []byte) (*box.Box, context.CancelFunc, context
 	return inst, cancel, ctx, nil
 }
 
-// (no package-level vars; instance state is declared above)
+// urlTest measures HTTP latency to a URL through the given Box instance.
+// Replaces the libneko speedtest.UrlTest helper with a native implementation.
+func urlTest(client *http.Client, target string, timeout int) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+	if err != nil {
+		return 0, err
+	}
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	return int(time.Since(start).Milliseconds()), nil
+}
+
+// tcpPing measures raw TCP connect latency.
+// Replaces the libneko speedtest.TcpPing helper.
+func tcpPing(address string, timeout int) (int, error) {
+	// Ensure it has a port
+	if _, _, err := net.SplitHostPort(address); err != nil {
+		address = net.JoinHostPort(address, "443")
+	}
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", address, time.Duration(timeout)*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	conn.Close()
+	return int(time.Since(start).Milliseconds()), nil
+}
+
+// dialSystem dials a direct connection (not through the proxy).
+func dialSystem(ctx context.Context, network, addr string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, network, addr)
+}
+
+// createSystemHttpClient creates an http.Client with direct (non-proxy) dialing.
+func createSystemHttpClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: dialSystem,
+		},
+		Timeout: 30 * time.Second,
+	}
+}
+
+// resolveProxyClient returns an HTTP client: through the box if running,
+// otherwise a direct system client.
+func resolveProxyClient() *http.Client {
+	if instance != nil {
+		return newProxyHttpClient(instance)
+	}
+	return createSystemHttpClient()
+}
+
+var _ = url.Parse // keep net/url import for future use
