@@ -8,6 +8,7 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/metadata"
 )
 
