@@ -1,0 +1,73 @@
+name: Build Mobile
+
+on:
+  push:
+    branches: [dev, feature/mobile]
+    paths:
+      - 'nekoray_flutter/**'
+      - 'go/**'
+      - 'libs/build_android.sh'
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Android NDK for Go cross-compilation
+      - name: Setup Android NDK
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - name: Fetch sing-box source
+        run: ./libs/get_source.sh
+
+      - name: Build Android Go core
+        run: ./libs/build_android.sh
+        continue-on-error: true # gomobile may need extra setup; log result
+
+      - name: Enable Android platform
+        working-directory: nekoray_flutter
+        run: flutter create --platforms=android .
+
+      - name: Install dependencies
+        working-directory: nekoray_flutter
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: nekoray_flutter
+        run: flutter build apk --release --split-per-abi
+        continue-on-error: true
+
+      - name: Build App Bundle
+        working-directory: nekoray_flutter
+        run: flutter build appbundle --release
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nekoray-android
+          path: |
+            nekoray_flutter/build/app/outputs/flutter-apk/*.apk
+            nekoray_flutter/build/app/outputs/bundle/release/*.aab
+            deployment/android/
+          retention-days: 14
