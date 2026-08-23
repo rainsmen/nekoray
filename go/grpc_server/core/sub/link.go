@@ -167,6 +167,34 @@ func ParseLink(link string) ParseResult {
 			return ParseResult{Error: err.Error()}
 		}
 		return ParseResult{Profile: newEntity("http", bean)}
+
+	case strings.HasPrefix(link, "naive+https://"), strings.HasPrefix(link, "naive://"):
+		bean, err := parseNaiveLink(link)
+		if err != nil {
+			return ParseResult{Error: err.Error()}
+		}
+		return ParseResult{Profile: newEntity("naive", bean)}
+
+	case strings.HasPrefix(link, "anytls://"):
+		bean, err := parseAnyTLSLink(link)
+		if err != nil {
+			return ParseResult{Error: err.Error()}
+		}
+		return ParseResult{Profile: newEntity("anytls", bean)}
+
+	case strings.HasPrefix(link, "ssh://"):
+		bean, err := parseSSHLink(link)
+		if err != nil {
+			return ParseResult{Error: err.Error()}
+		}
+		return ParseResult{Profile: newEntity("ssh", bean)}
+
+	case strings.HasPrefix(link, "wireguard://"), strings.HasPrefix(link, "wg://"):
+		bean, err := parseWireGuardLink(link)
+		if err != nil {
+			return ParseResult{Error: err.Error()}
+		}
+		return ParseResult{Profile: newEntity("wireguard", bean)}
 	}
 
 	return ParseResult{Error: "unsupported link scheme: " + link}
@@ -612,4 +640,173 @@ func getInt(m map[string]interface{}, k string) int {
 		}
 	}
 	return 0
+}
+
+// --- naive / anytls / ssh / wireguard link parsers ---
+
+// parseNaiveLink parses naive+https://username:password@host:port links.
+func parseNaiveLink(link string) (*nekokfmt.NaiveBean, error) {
+	// Normalize scheme to https:// for url.Parse
+	normalized := strings.Replace(link, "naive+https://", "https://", 1)
+	normalized = strings.Replace(normalized, "naive://", "https://", 1)
+	u, err := url.Parse(normalized)
+	if err != nil || u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid naive link")
+	}
+	port := 443
+	if p := u.Port(); p != "" {
+		port, _ = strconv.Atoi(p)
+	}
+	bean := &nekokfmt.NaiveBean{
+		Username: u.User.Username(),
+		Password: "",
+	}
+	if pass, ok := u.User.Password(); ok {
+		bean.Password = pass
+	}
+	bean.ServerAddress = u.Hostname()
+	bean.ServerPort = port
+	if q := u.Query(); q != nil {
+		bean.Sni = queryValue(q, "sni", u.Hostname())
+		if q.Get("insecure") == "1" || q.Get("allow_insecure") == "1" {
+			bean.AllowInsecure = true
+		}
+		if alpn := q.Get("alpn"); alpn != "" {
+			bean.Alpn = alpn
+		}
+		if q.Get("quic") == "1" {
+			bean.QUIC = true
+		}
+	} else {
+		bean.Sni = u.Hostname()
+	}
+	return bean, nil
+}
+
+// parseAnyTLSLink parses anytls://password@host:port links.
+func parseAnyTLSLink(link string) (*nekokfmt.AnyTLSBean, error) {
+	u, err := url.Parse(link)
+	if err != nil || u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid anytls link")
+	}
+	port := 443
+	if p := u.Port(); p != "" {
+		port, _ = strconv.Atoi(p)
+	}
+	bean := &nekokfmt.AnyTLSBean{}
+	// password is the userinfo (no username)
+	if pass, ok := u.User.Password(); ok {
+		bean.Password = pass
+	} else if u.User.Username() != "" {
+		bean.Password = u.User.Username()
+	}
+	bean.ServerAddress = u.Hostname()
+	bean.ServerPort = port
+	if q := u.Query(); q != nil {
+		bean.Sni = queryValue(q, "sni", u.Hostname())
+		if q.Get("insecure") == "1" || q.Get("allow_insecure") == "1" {
+			bean.AllowInsecure = true
+		}
+		if alpn := q.Get("alpn"); alpn != "" {
+			bean.Alpn = alpn
+		}
+		if s := q.Get("min_idle_session"); s != "" {
+			bean.MinIdleSession, _ = strconv.Atoi(s)
+		}
+		if s := q.Get("client_metadata"); s != "" {
+			bean.ClientMetadata = s
+		}
+	} else {
+		bean.Sni = u.Hostname()
+	}
+	return bean, nil
+}
+
+// parseSSHLink parses ssh://user[:password]@host:port links.
+func parseSSHLink(link string) (*nekokfmt.SSHBean, error) {
+	u, err := url.Parse(link)
+	if err != nil || u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid ssh link")
+	}
+	port := 22
+	if p := u.Port(); p != "" {
+		port, _ = strconv.Atoi(p)
+	}
+	bean := &nekokfmt.SSHBean{
+		User: u.User.Username(),
+	}
+	if pass, ok := u.User.Password(); ok {
+		bean.Password = pass
+	}
+	bean.ServerAddress = u.Hostname()
+	bean.ServerPort = port
+	if q := u.Query(); q != nil {
+		if s := q.Get("private_key"); s != "" {
+			bean.PrivateKey = s
+		}
+		if s := q.Get("host_key_algorithms"); s != "" {
+			bean.HostKeyAlgorithms = s
+		}
+		if s := q.Get("client_version"); s != "" {
+			bean.ClientVersion = s
+		}
+	}
+	return bean, nil
+}
+
+// parseWireGuardLink parses wireguard://privatekey@host:port?params links.
+// The key (private_key) is the userinfo password part.
+func parseWireGuardLink(link string) (*nekokfmt.WireGuardBean, error) {
+	// Replace wg:// for url.Parse
+	normalized := strings.Replace(link, "wg://", "wireguard://", 1)
+	u, err := url.Parse(normalized)
+	if err != nil || u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid wireguard link")
+	}
+	port := 51820
+	if p := u.Port(); p != "" {
+		port, _ = strconv.Atoi(p)
+	}
+	bean := &nekokfmt.WireGuardBean{}
+	// Private key can be the password or username part of userinfo
+	if pass, ok := u.User.Password(); ok {
+		bean.PrivateKey = pass
+	} else if u.User.Username() != "" {
+		bean.PrivateKey = u.User.Username()
+	}
+	bean.ServerAddress = u.Hostname()
+	bean.ServerPort = port
+	bean.PeerAddress = u.Hostname()
+	bean.PeerPort = port
+
+	if q := u.Query(); q != nil {
+		if s := q.Get("address"); s != "" {
+			bean.Address = s
+		}
+		if s := q.Get("public_key"); s != "" {
+			bean.PeerPublicKey = s
+		}
+		if s := q.Get("pre_shared_key"); s != "" {
+			bean.PeerPreSharedKey = s
+		}
+		if s := q.Get("allowed_ips"); s != "" {
+			bean.PeerAllowedIPs = s
+		}
+		if s := q.Get("mtu"); s != "" {
+			bean.MTU, _ = strconv.Atoi(s)
+		}
+		if s := q.Get("keepalive"); s != "" {
+			bean.PeerKeepAlive, _ = strconv.Atoi(s)
+		}
+		if s := q.Get("reserved"); s != "" {
+			bean.PeerReserved = s
+		}
+	}
+	if bean.Address == "" {
+		bean.Address = "10.0.0.2/32"
+	}
+	if bean.PeerAllowedIPs == "" {
+		bean.PeerAllowedIPs = "0.0.0.0/0,::/0"
+	}
+	return bean, nil
 }

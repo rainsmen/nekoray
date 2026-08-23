@@ -58,8 +58,10 @@ rule-set management) has been sunk into the Go core.
 - Trojan
 - Hysteria2
 - TUIC
-- WireGuard
-- SSH
+- **NaiveProxy** (sing-box 原生)
+- **AnyTLS** (sing-box 原生)
+- **SSH** (sing-box 原生)
+- **WireGuard** (sing-box 原生)
 - SOCKS / HTTP
 - Custom Outbound / Custom Config
 

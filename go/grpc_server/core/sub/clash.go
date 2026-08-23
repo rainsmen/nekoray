@@ -256,6 +256,91 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 		return ParseResult{Profile: newEntity("tuic", bean)}
 	}
 
+	case "naive":
+		bean := &nekokfmt.NaiveBean{
+			AbstractBean: nekokfmt.AbstractBean{
+				Name:          name,
+				ServerAddress: server,
+				ServerPort:    port,
+			},
+			Username: nodeStr(proxy["username"]),
+			Password: nodeStr(proxy["password"]),
+			Sni:      nodeStr(proxy["sni"]),
+			AllowInsecure: nodeBool(proxy["skip-cert-verify"]),
+		}
+		return ParseResult{Profile: newEntity("naive", bean)}
+
+	case "anytls":
+		bean := &nekokfmt.AnyTLSBean{
+			AbstractBean: nekokfmt.AbstractBean{
+				Name:          name,
+				ServerAddress: server,
+				ServerPort:    port,
+			},
+			Password: nodeStr(proxy["password"]),
+			Sni:      nodeStr(proxy["sni"]),
+			AllowInsecure: nodeBool(proxy["skip-cert-verify"]),
+		}
+		if v := proxy["min-idle-session"]; v != nil {
+			bean.MinIdleSession = nodeInt(v)
+		}
+		if s := nodeStr(proxy["client-metadata"]); s != "" {
+			bean.ClientMetadata = s
+		}
+		return ParseResult{Profile: newEntity("anytls", bean)}
+
+	case "ssh":
+		bean := &nekokfmt.SSHBean{
+			AbstractBean: nekokfmt.AbstractBean{
+				Name:          name,
+				ServerAddress: server,
+				ServerPort:    port,
+			},
+			User: nodeStr(proxy["username"]),
+			Password: nodeStr(proxy["password"]),
+		}
+		if s := nodeStr(proxy["client-version"]); s != "" {
+			bean.ClientVersion = s
+		}
+		return ParseResult{Profile: newEntity("ssh", bean)}
+
+	case "wireguard":
+		bean := &nekokfmt.WireGuardBean{
+			AbstractBean: nekokfmt.AbstractBean{
+				Name:          name,
+				ServerAddress: server,
+				ServerPort:    port,
+			},
+			PrivateKey: nodeStr(proxy["private-key"]),
+			MTU:        nodeInt(proxy["mtu"]),
+		}
+		if s := joinStrList(proxy["address"], ","); s != "" {
+			bean.Address = s
+		}
+		// peers (clash typically has a single peer section)
+		if peers, ok := proxy["peers"].([]interface{}); ok && len(peers) > 0 {
+			if peer, ok := peers[0].(map[string]interface{}); ok {
+				bean.PeerPublicKey = nodeStr(peer["public-key"])
+				bean.PeerPreSharedKey = nodeStr(peer["pre-shared-key"])
+				bean.PeerAllowedIPs = joinStrList(peer["allowed-ips"], ",")
+				bean.PeerKeepAlive = nodeInt(peer["persistent-keepalive"])
+			}
+		} else {
+			// Some clash configs use flat keys
+			bean.PeerPublicKey = nodeStr(proxy["public-key"])
+			bean.PeerPreSharedKey = nodeStr(proxy["pre-shared-key"])
+			bean.PeerAllowedIPs = joinStrList(proxy["allowed-ips"], ",")
+			bean.PeerKeepAlive = nodeInt(proxy["persistent-keepalive"])
+		}
+		if bean.Address == "" {
+			bean.Address = "10.0.0.2/32"
+		}
+		if bean.PeerAllowedIPs == "" {
+			bean.PeerAllowedIPs = "0.0.0.0/0,::/0"
+		}
+		return ParseResult{Profile: newEntity("wireguard", bean)}
+	}
+
 	return ParseResult{Error: fmt.Sprintf("unsupported clash proxy type: %s", origType)}
 }
 

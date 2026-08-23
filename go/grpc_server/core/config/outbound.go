@@ -128,6 +128,14 @@ func BuildOutboundSingBox(bean interface{}) (map[string]interface{}, error) {
 		return buildTrojanVLESS(b), nil
 	case *nekokfmt.QUICBean:
 		return buildQUIC(b), nil
+	case *nekokfmt.NaiveBean:
+		return buildNaive(b), nil
+	case *nekokfmt.AnyTLSBean:
+		return buildAnyTLS(b), nil
+	case *nekokfmt.SSHBean:
+		return buildSSH(b), nil
+	case *nekokfmt.WireGuardBean:
+		return buildWireGuard(b), nil
 	case *nekokfmt.CustomBean:
 		if b.Core == "internal" {
 			var raw map[string]interface{}
@@ -309,4 +317,171 @@ func parseInt(s string) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// buildTLS builds a sing-box TLS object from common fields.
+func buildTLS(sni string, allowInsecure bool, alpn string) map[string]interface{} {
+	tls := map[string]interface{}{
+		"enabled": true,
+		"insecure": allowInsecure,
+		"server_name": sni,
+	}
+	if strings.TrimSpace(alpn) != "" {
+		tls["alpn"] = strings.Split(alpn, ",")
+	}
+	return tls
+}
+
+// buildNaive builds a sing-box naive outbound from NaiveBean.
+func buildNaive(b *nekokfmt.NaiveBean) map[string]interface{} {
+	outbound := map[string]interface{}{
+		"type":        "naive",
+		"server":      b.ServerAddress,
+		"server_port": b.ServerPort,
+		"username":    b.Username,
+		"password":    b.Password,
+	}
+	if b.InsecureConcurrency > 0 {
+		outbound["insecure_concurrency"] = b.InsecureConcurrency
+	}
+	if b.UDPOverTCP {
+		outbound["udp_over_tcp"] = map[string]interface{}{"enabled": true}
+	}
+	if b.QUIC {
+		outbound["quic"] = true
+	}
+	// naive requires TLS; always attach
+	outbound["tls"] = buildTLS(b.Sni, b.AllowInsecure, b.Alpn)
+	return outbound
+}
+
+// buildAnyTLS builds a sing-box anytls outbound from AnyTLSBean.
+func buildAnyTLS(b *nekokfmt.AnyTLSBean) map[string]interface{} {
+	outbound := map[string]interface{}{
+		"type":        "anytls",
+		"server":      b.ServerAddress,
+		"server_port": b.ServerPort,
+		"password":    b.Password,
+	}
+	if strings.TrimSpace(b.IdleSessionCheckInterval) != "" {
+		outbound["idle_session_check_interval"] = b.IdleSessionCheckInterval
+	}
+	if strings.TrimSpace(b.IdleSessionTimeout) != "" {
+		outbound["idle_session_timeout"] = b.IdleSessionTimeout
+	}
+	if b.MinIdleSession > 0 {
+		outbound["min_idle_session"] = b.MinIdleSession
+	}
+	if strings.TrimSpace(b.ClientMetadata) != "" {
+		outbound["client_metadata"] = b.ClientMetadata
+	}
+	// anytls requires TLS; always attach
+	outbound["tls"] = buildTLS(b.Sni, b.AllowInsecure, b.Alpn)
+	return outbound
+}
+
+// buildSSH builds a sing-box ssh outbound from SSHBean.
+func buildSSH(b *nekokfmt.SSHBean) map[string]interface{} {
+	outbound := map[string]interface{}{
+		"type":        "ssh",
+		"server":      b.ServerAddress,
+		"server_port": b.ServerPort,
+		"user":        b.User,
+	}
+	if strings.TrimSpace(b.Password) != "" {
+		outbound["password"] = b.Password
+	}
+	if strings.TrimSpace(b.PrivateKey) != "" {
+		outbound["private_key"] = strings.Split(b.PrivateKey, "\n")
+	}
+	if strings.TrimSpace(b.PrivateKeyPath) != "" {
+		outbound["private_key_path"] = b.PrivateKeyPath
+	}
+	if strings.TrimSpace(b.PrivateKeyPassphrase) != "" {
+		outbound["private_key_passphrase"] = b.PrivateKeyPassphrase
+	}
+	if strings.TrimSpace(b.HostKeyAlgorithms) != "" {
+		outbound["host_key_algorithms"] = strings.Split(b.HostKeyAlgorithms, ",")
+	}
+	if strings.TrimSpace(b.ClientVersion) != "" {
+		outbound["client_version"] = b.ClientVersion
+	}
+	return outbound
+}
+
+// buildWireGuard builds a sing-box wireguard outbound from WireGuardBean.
+func buildWireGuard(b *nekokfmt.WireGuardBean) map[string]interface{} {
+	outbound := map[string]interface{}{
+		"type":        "wireguard",
+		"server":      b.ServerAddress,
+		"server_port": b.ServerPort,
+		"private_key": strings.TrimSpace(b.PrivateKey),
+	}
+	if b.System {
+		outbound["system"] = true
+	}
+	if strings.TrimSpace(b.InterfaceName) != "" {
+		outbound["name"] = b.InterfaceName
+	}
+	if b.MTU > 0 {
+		outbound["mtu"] = b.MTU
+	}
+	if strings.TrimSpace(b.Address) != "" {
+		addrs := strings.Split(b.Address, ",")
+		trimmed := make([]string, 0, len(addrs))
+		for _, a := range addrs {
+			if t := strings.TrimSpace(a); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		outbound["address"] = trimmed
+	}
+	if b.ListenPort > 0 {
+		outbound["listen_port"] = b.ListenPort
+	}
+	if strings.TrimSpace(b.UDPTimeout) != "" {
+		outbound["udp_timeout"] = b.UDPTimeout
+	}
+	if b.Workers > 0 {
+		outbound["workers"] = b.Workers
+	}
+
+	// Peer (sing-box v1.13 uses the single-peer endpoint model)
+	peer := map[string]interface{}{
+		"server":     b.ServerAddress,
+		"server_port": b.ServerPort,
+	}
+	if strings.TrimSpace(b.PeerPublicKey) != "" {
+		peer["public_key"] = strings.TrimSpace(b.PeerPublicKey)
+	}
+	if strings.TrimSpace(b.PeerPreSharedKey) != "" {
+		peer["pre_shared_key"] = strings.TrimSpace(b.PeerPreSharedKey)
+	}
+	if strings.TrimSpace(b.PeerAllowedIPs) != "" {
+		allowed := strings.Split(b.PeerAllowedIPs, ",")
+		trimmed := make([]string, 0, len(allowed))
+		for _, a := range allowed {
+			if t := strings.TrimSpace(a); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		peer["allowed_ips"] = trimmed
+	}
+	if b.PeerKeepAlive > 0 {
+		peer["persistent_keepalive_interval"] = b.PeerKeepAlive
+	}
+	if strings.TrimSpace(b.PeerReserved) != "" {
+		parts := strings.Split(b.PeerReserved, ",")
+		reserved := make([]uint8, 0, len(parts))
+		for _, p := range parts {
+			if v := parseInt(strings.TrimSpace(p)); v >= 0 && v <= 255 {
+				reserved = append(reserved, uint8(v))
+			}
+		}
+		if len(reserved) > 0 {
+			peer["reserved"] = reserved
+		}
+	}
+	outbound["peers"] = []interface{}{peer}
+	return outbound
 }
