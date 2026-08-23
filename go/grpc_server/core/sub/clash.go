@@ -254,7 +254,6 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 			bean.ServerAddress = ip
 		}
 		return ParseResult{Profile: newEntity("tuic", bean)}
-	}
 
 	case "naive":
 		bean := &nekokfmt.NaiveBean{
