@@ -1,6 +1,56 @@
 # Changelog
 
-## v5.0.0-beta1 — Phase 2 Flutter Desktop (2025-08-23)
+## v5.0.0-beta.3 — New Protocols + Codebase Cleanup (2026-08-23)
+
+### New Features
+- **4 new proxy protocols**: NaiveProxy, AnyTLS, SSH, WireGuard (sing-box native)
+  - Full end-to-end support: Go Bean models → ConfigBuilder → subscription parsing → Flutter UI forms
+  - Link parsing: `naive+https://`, `anytls://`, `ssh://`, `wireguard://` / `wg://`
+  - Clash YAML parsing for all 4 protocols
+  - Link generation (round-trip compatible)
+  - 9 new unit tests (4 outbound build + 4 link parse + 1 round-trip)
+- **Total 14 proxy protocols** now supported
+
+### Codebase Cleanup
+- **Removed 32,139 lines of legacy C++/Qt code** (12 directories: fmt/db/sub/rpc/ui/main/sys/3rdparty/res/cmake/translations/test)
+- **Dropped libneko dependency**: Go core is now fully independent (no C++ library dependency)
+  - `core_box.go`: native Go dialing (net/http) replaces libneko callbacks
+  - `grpc_box.go`: native `urlTest`/`tcpPing` replaces `speedtest`
+  - `update.go`/`fulltest.go`: injectable HTTP client factory
+  - `go.mod`: removed libneko/sing-quic replace directives
+- **Removed legacy build files**: CMakeLists.txt, .clang-format, .clang-tidy, .gitmodules
+- **Removed legacy CI**: build-nekoray-cmake.yml, update-pkgbuild.yml, cpp-check job
+- **Removed legacy scripts**: Qt SDK/deploy/appimage/debian (9 scripts removed)
+- **Rewrote README**: reflects Flutter + Go core architecture, CI badges, 6-platform download table
+- **Rewrote ARCHITECTURE.md**: v5.x current architecture with full protocol table
+
+### Current Protocol Support (14 protocols)
+| Protocol | Bean Type | sing-box Native |
+|---|---|---|
+| Shadowsocks | ShadowSocksBean | ✅ |
+| VMess | VMessBean | ✅ |
+| VLESS | TrojanVLESSBean | ✅ (Reality/vision) |
+| Trojan | TrojanVLESSBean | ✅ |
+| Hysteria2 | QUICBean | ✅ |
+| TUIC | QUICBean | ✅ |
+| **NaiveProxy** | NaiveBean | ✅ NEW |
+| **AnyTLS** | AnyTLSBean | ✅ NEW |
+| **SSH** | SSHBean | ✅ NEW |
+| **WireGuard** | WireGuardBean | ✅ NEW |
+| SOCKS4/5 | SocksHttpBean | ✅ |
+| HTTP(S) | SocksHttpBean | ✅ |
+| Custom | CustomBean | ✅ |
+| Chain | ChainBean | ✅ |
+
+## v5.0.0-beta.2 — Mobile + Release Fixes (2026-08-23)
+
+### New Features
+- **Android build**: gomobile cross-compile (arm64/arm/x86_64)
+- **Responsive layout**: desktop NavigationRail / mobile BottomBar
+- **Windows packaging fix**: absolute paths + 7z priority
+- **Release pipeline**: Android APKs in release assets
+
+## v5.0.0-beta.1 — Phase 2 Flutter Desktop (2026-08-23)
 
 ### Breaking Changes
 - Complete UI rewrite from C++/Qt to Flutter
