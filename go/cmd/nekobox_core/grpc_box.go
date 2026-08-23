@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"grpc_server"
@@ -95,10 +96,14 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 			}
 		}
 		// Native URL test (replaces libneko speedtest.UrlTest)
-		out.Ms, err = urlTest(newProxyHttpClient(i), in.Url, int(in.Timeout))
+		var ms int
+		ms, err = urlTest(newProxyHttpClient(i), in.Url, int(in.Timeout))
+		out.Ms = int32(ms)
 	} else if in.Mode == gen.TestMode_TcpPing {
 		// Native TCP ping (replaces libneko speedtest.TcpPing)
-		out.Ms, err = tcpPing(in.Address, int(in.Timeout))
+		var ms int
+		ms, err = tcpPing(in.Address, int(in.Timeout))
+		out.Ms = int32(ms)
 	} else if in.Mode == gen.TestMode_FullTest {
 		i, cancel, _, err := createInstance([]byte(in.Config.CoreConfig))
 		if i != nil {
