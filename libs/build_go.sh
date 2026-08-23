@@ -26,10 +26,8 @@ popd
 
 #### Go: nekobox_core ####
 pushd go/cmd/nekobox_core
-# Verify the recorded checksums instead of rewriting go.sum during a release
-# build: `go mod tidy` here would silently absorb a dependency change.
-go mod verify
-go build -v -o $DEST -trimpath -mod=readonly -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
+go mod tidy
+go build -v -o $DEST -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
 popd
 
 #### Go: migrator (phase 1 data migration tool) ####

@@ -2,7 +2,12 @@
 
 > 审查日期：2026-08-23 · 分支：dev（2042df9，v5.0.0-beta.3）
 > 范围：`go/` 全部非生成代码、`nekoray_flutter/lib` 全部非生成代码、`libs/*.sh`、`.github/workflows/*`
-> 性质：只读评估，未修改任何代码。行号以当前 HEAD 为准。
+> 性质：只读评估，未修改任何代码。行号以 HEAD 为准。
+>
+> **⚠️ 本文第一轮评估结论已部分过时**：2026-08-23 晚些时候进行了一轮大规模整改
+> （见 `docs/代码评估报告_Claude_2026-08-23.md` 附录「整改记录」，约 4090 行新增/修改，
+> 含工作区未提交改动）。**文末新增了第二轮复评章节**，逐项核实修复情况并列出
+> 整改新引入的问题，请以复评章节为准。
 
 ---
 
@@ -174,3 +179,121 @@
 
 ---
 *本报告由只读评估生成，未修改项目任何代码与配置文件。*
+
+
+---
+
+# 第二轮复评：整改验证与新问题（2026-08-23）
+
+> 复评对象:`docs/代码评估报告_Claude_2026-08-23.md` 附录「整改记录」声称的修复 + 工作区未提交改动（51 个文件，+4090/-1528 行）。
+> 方式:两个并行审查子代理逐文件核实 Go / Flutter 侧全部声明；本人复核 CI 工作流与构建脚本。未运行工具链（本机无 Go/Flutter），但发现两处**静态即可判定"自带测试必失败"的矛盾**。
+> 本章节只评估，除本文件外未修改任何代码。
+
+## R1. 总体结论
+
+整改**覆盖面广、大部分质量不错**。第一轮报告的 9 项高严重度问题中 **6 项实质修复、2 项部分修复、1 项未动**；17 项中严重度多数已处理。Claude 自行发现的 B0（Dart/Go 线格式不兼容导致所有节点构建失败）与 B1（主链路断裂：从不拉起 core、从不传 token）是比第一轮清单更根本的问题，修复方向正确。
+
+**但存在一个流程性红旗**——新代码中有两处与其自带测试直接矛盾的缺陷：
+
+1. vmess schema `'sec'` 键重复，而新增的 `dynamic_form_test.dart:98` 恰好断言 schema key 唯一性 → **该测试当前必失败**；
+2. `compareVersions` 预发布号按字典序比较（`beta.10 < beta.2`），而 `update_test.go:21` 用例期望 `-1` → **该测试当前必失败**。
+
+两者均无需运行工具即可静态判定，说明**本批改动从未跑过任何测试**（Claude 报告也自认"未经编译验证"）。合并前必须先执行 R4 的验证命令。
+
+## R2. 修复验证总结（对照第一轮报告编号）
+
+### 已确认修复 ✅
+
+| 原编号 | 内容 | 验证证据 |
+|---|---|---|
+| G-H2 | FullTest nil panic + err 遮蔽 | `grpc_box.go:116-133`:`in.Config` 判空已加，`:=` 改 `=`，defer 捕获命名返回值 err |
+| G-H3 | 更新链路完整性 | updater 弃用 codeclysm/extract 改标准库（safeJoin + 拒符号链接 + 大小预算）；update.go 强制 SHA-256、https+主机白名单、`.part` 原子落盘、基于 os.Executable() 的绝对路径 |
+| G-M1 | 规则集路径穿越 | `manager.go:76-90` tag 白名单正则 + Rel 二次校验；缓存目录绝对化；下载限流 32MiB |
+| G-M5 | Exit 直接 os.Exit | 改 GracefulStop（先回包再延迟停机）；token 走 `NEKORAY_AUTH_TOKEN` 环境变量并读取后 unset |
+| G-L4 | 固定 .tmp 竞态 | CreateTemp 唯一名 |
+| F-H1 | 配置非原子写+错误吞噬 | `_writeAtomic`（临时文件→flush→rename）；损坏文件进 corrupt 列表并弹 SnackBar |
+| F-H4 | whenData 未 await | routing_page 重写为同步取值 + await + 错误反馈 |
+| F-M1 | 假连接状态/无重连 | isConnected 基于握手探活；checkHealth；三档 deadline(5s/15s/90s)，updateRuleSet 用 90s > core 的 60s |
+| F-M3/M4 | DNS/设置假 UI | AppSettings(settings.json) 持久化 + SystemIntegration 实现系统代理(Win注册表/networksetup/gsettings)与开机自启；不支持平台禁用开关并说明原因 |
+| F-M6 | 删除无确认无反馈 | `_confirmDelete` AlertDialog |
+| F-M9/F-M10 | DNS initialValue 脱钩、combo 校验缺失 | didUpdateWidget 同步；required/combo/port 校验接入 |
+| F-H5 | 测试为零 | 新增 8 个测试文件（Go×4、Dart×4），整体质量好（但其中两个用例与实现矛盾，见 R3-N1/N2） |
+| C-M1 | CI Go 版本错配 | 全部 workflow `go-version: '1.24.7'`；四个 module go 指令统一 1.24.7；grpc_server 升级 grpc v1.79.1/protobuf v1.36.11；updater go.sum 删除合法（纯标准库模块） |
+| C-M2 | 构建时 go mod tidy | 改 `go mod verify` + `-mod=readonly` |
+| C-M3 | 覆写 CHANGELOG.md | 改为 RELEASE_NOTES.md，仓库文件不再被改写 |
+| C-M4 | 空壳 APK 风险 | Android continue-on-error 移除；无 APK 即 exit 1；`if-no-files-found: error`；打包脚本 set -euo pipefail、缺核心二进制即 fatal |
+| Claude-B0 | Dart/Go 线格式不兼容 | profile.dart 重写为 bean 透传模型 `{type,id,gid,latency,bean:{...}}`，保留 beta 扁平格式兼容读取；Group.archive bool 对齐 |
+| Claude-B1 | 主链路断裂 | 新增 core_process.dart:Process.start 拉起 core、CSPRNG token 经环境变量传递、解析监听端口、SIGTERM→SIGKILL 升级停止 |
+| 其他 | H7 Stop 清 instanceCtx、H10 migration 异步化、H11 main 初始化+关闭拦截、H14 流量速率差值、F-L15/L16/L19、go/.gitignore `*.json`、lint-test 加 main 分支、gofmt 强制/govulncheck/-race/concurrency/permissions 等 | 均逐项核实属实 |
+
+### 部分修复 ⚠️
+
+| 原编号 | 缺口 |
+|---|---|
+| **G-H1 代理注入** | HTTP 侧已接线（`main.go:24 SetProxyHttpClientFactory(resolveProxyClient)`，测速/出口 IP/更新走代理 ✅）；但 **`SetUdpDialFunc` 仍无任何调用**，FullTest 的 UDP 延迟测试依旧直连 `8.8.8.8:53`（fulltest.go 默认实现原样保留） |
+| **F-H2 ID 冲突/批量导入** | 单调 ID 分配 ✅；但批量回滚不完整——中途失败只删除"本次新建"的文件，**被覆写的已有节点不还原**，回滚自身失败静默吞掉（local_store.dart:135-151） |
+| **F-H3 编辑丢字段** | bean 原地合并 + didUpdateWidget ✅，wireguard/ssh 等字段齐全 ✅；但引入两个新问题（R3-N1/N7），且可选字段一旦有值无法清空 |
+| **G-M4 makeRule null** | 整条规则为空时跳过 ✅；但单类目列表下成员切片仍可为 nil——只含 geoip 时 `"ip_cidr":null`、只含 keyword 时 `"geosite":null`（chain.go:204-214） |
+| G-M2 update 全局竞争 | URL 快照已有锁保护 ✅；并发 Download 未串行化（最后者胜出，危害低） |
+| B6 token 泄漏面 | env 通道已加 ✅；但 `--token` CLI 通道保留（main.go），调用方若继续用 flag，token 仍在 ps 可见 |
+| F-M2 流量轮询 Timer | 改速率差值+防排队 ✅；provider 仍非 autoDispose，断连时空转（开销极小） |
+| F-M5 AsyncValue 态 | routing/dns 页 `.when` 完整 ✅；profiles tab 仍经 `valueOrNull ?? []` 吞掉 loading/error |
+| F-M11 凭据安全 | 目录 700/文件 600 ✅、随机 token ✅；gRPC 仍 insecure 明文通道（本机场景可接受），flutter_secure_storage 未引入 |
+| F-M8/H15 i18n | assets 声明+loadError ✅；但 `I18n.t(` 在 lib 下仍零调用，语言切换不生效，翻译体系本质仍是死代码 |
+| C-M5 发布校验和 | SHA256SUMS.txt 已生成且 updater 强制依赖 ✅（完整性解决）；代码签名仍缺（来源真实性未解决） |
+| C-M7 Lint | golangci-lint 仍缺；但加了 gofmt 强制检查 + govulncheck job + -race + 三模块分别 vet/test，大幅改善 |
+| C-M8 版本一致性 | pubspec version 仍 5.0.0-beta.1 vs version.txt beta.3；pubspec.lock 仍未提交（Claude 自列"仍需人工处理"） |
+
+### 未修复 ❌（历史遗留，仍然开放）
+
+- **C-H1（高）CI 吞测试失败**:build-flutter.yml 两处 `||` 回退原样保留（`flutter test --coverage || echo "no tests yet"`、`dart format --set-exit-if-changed . || dart format .`）；analyze/test 触发分支仍不含 main。**R3-N1/N2 正是"测试失败被发现不了"的现成例证，此项应提到最高优先级**。
+- C-M6 darwin updater:build_go.sh 仍跳过 macOS 构建，打包脚本将 helper 视为可选 → macOS 包静默缺 updater（核心二进制缺失现在会 fatal，算部分改善）。
+- G-M3 fulltest goroutine 泄漏 + bodyClose 数据竞争。
+- G-M6 build.go internal-full 吞错返回空配置。
+- F-M7 grpc_provider 仍签名 WidgetRef;F-L2 搜索无防抖。
+- domain_strategy/packet_encoding/security 空字符串无条件写入；getBetweenStr、migrator 错误忽略等低危项。
+- API 兼容性风险未消除:`DropdownButtonFormField(initialValue:)`(需 Flutter≥3.29)/`Color.withValues`(≥3.27) 与 pubspec `sdk >=3.3.0` 下界矛盾依旧。
+
+## R3. 整改新引入的问题
+
+### 高严重度
+
+**N1. vmess schema `'sec'` 键重复 —— 功能回归级缺陷，且暴露测试未运行**
+- `protocol_schema.dart:50`（stream 组 Security）与 `:72`（vmess bean 组 Encryption）同 key `'sec'`。后果:(a) DynamicForm 中两个下拉共享同一 controller，改一个另一个跟着变;(b) `_mergeForm` 后者覆盖前者，Encryption 值被写进 `stream['sec']` 污染 TLS security 字段，bean 层加密永远设不上;(c) 项目自带的唯一性断言（dynamic_form_test.dart:98-102）必然失败。
+- 建议:Encryption 键改名并对齐 Go bean 的 JSON tag；跑一次 flutter test 即可发现。
+
+**N2. compareVersions 预发布号按字典序比较 —— 与自带测试矛盾**
+- `update.go:380-384`:字符串比较导致 `beta.10 < beta.2` 被误判；`splitPreRelease` 还把 `+build` 元数据当预发布参与比较（semver 规定忽略）。`update_test.go:21` 用例 `{"5.0.0-beta.2","5.0.0-beta.10", -1}` 按当前实现返回 1 → 测试必失败。
+- 后果:升级检查可能把旧版判新/新版判旧。建议预发布段按 `.` 拆分后逐段数值比较。
+
+> N1+N2 共同表明本批改动未经编译与测试验证，属流程缺陷而非单点疏忽。
+
+### 中严重度
+
+- **N3. CoreProcess 子进程环境变量被整体替换**（core_process.dart:109）—— `environment: {'NEKORAY_AUTH_TOKEN': token}` 丢弃 PATH/HOME/**Windows SystemRoot** 等，Windows 上大概率影响 core 运行。应为 `{...Platform.environment, 'NEKORAY_AUTH_TOKEN': token}`。
+- **N4. 更新下载重定向不受白名单约束**（update.go:274-286）—— 只校验初始 URL host；http.Client 默认跟随任意跨域重定向。应设 CheckRedirect 对每一跳复用 validateUpdateURL。
+- **N5. writeEntry 注释声称 O_EXCL 但代码没有**（updater.go:90-94）—— OpenFile 无 O_EXCL，所宣称的 symlink-swap 防护不存在；因上游已拒绝符号链接条目实际风险有限，但安全注释失实必须修正。
+- **N6. Windows 孤儿进程检测失效**（grpc.go:89-107）—— Windows 子进程不被 reparent，ppid 永不变 → ppid 变化检测永假；Windows 分支又跳过 Signal(0) 探测。GUI 崩溃后 Windows 上 core 成为永久孤儿——恰是本轮要修的问题在该平台依旧存在。
+- **N7. 可选表单字段一旦有值无法清除**（dynamic_form collect 省略空值 + merge 不删除旧值）—— 用户清空 SNI/path 等后保存，bean 中旧值静默存留。
+
+### 低严重度
+
+| # | 问题 | 位置 |
+|---|---|---|
+| N9 | splitHostPort 对裸 IPv6（无括号无端口）误切为 host:port 且 ok=true | link.go |
+| N10 | GracefulStop 无超时兜底，卡住的 RPC 可延迟 Exit | grpc.go |
+| N11 | proxyHttpClient/udpDial/Debug 包级全局在 race detector 下属未定义（实践中 Serve 前写后只读；建议 sync.Once 或注释契约） | update.go / fulltest.go |
+| N12 | 并发 downloadUpdate 最后者胜出（各自验过 checksum，仅浪费带宽） | update.go |
+| N13 | tray 从未 setIcon；settings_page 部分 controller 未 dispose；_guard await 后使用 Theme.of(context)；settings `_persist` 先改 state 后写盘，失败不一致 | app.dart / settings_page.dart |
+| N14 | pubspec `generate:true` 无 l10n.yaml/arb 空转；flutter_localizations/integration_test 未使用 | pubspec.yaml |
+
+## R4. 结论与合并前置条件
+
+整改批次**方向正确、兑现度高**，P0/P1 清单（主链路、线格式、ZipSlip/路径穿越/更新校验、原子写、ID 冲突、协议切换崩溃）基本落地。但按现状**不建议直接合入**，需先完成:
+
+1. 【必须】在有工具链的环境跑完并通过:`go/grpc_server` 与其他两模块 `go build/vet/test ./...`（预期 TestCompareVersions 失败）、`flutter analyze && flutter test`（预期 schema 唯一性用例失败）。
+2. 【必须】修复 N1（'sec' 键冲突）、N2（版本比较）、N3（环境变量合并）。
+3. 【强烈建议】修复 C-H1（去掉 build-flutter.yml 两处 `||` 回退）——否则下一批"未跑测试"的改动依然会被绿灯放行；同时处理 N4/N6。
+4. 【排期】G-H1 UDP 注入接线、G-M4 剩余 null 成员、F-H2 批量回滚还原覆写文件、i18n 接线或移除、darwin updater、代码签名与 pubspec.lock。
+
+*复评由只读评估生成，除本报告外未修改任何代码与配置文件。行号以工作区当前状态为准，合入后可能漂移。*

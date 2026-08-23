@@ -237,21 +237,21 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
   }
 
   Future<void> addRule(RoutingRule rule) async {
-    await state.whenData((c) async {
-      final next = c.copyWith(rules: [...c.rules, rule]);
-      await LocalStore.saveRouting('default', next.toJson());
-      state = AsyncValue.data(next);
-    });
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final next = c.copyWith(rules: [...c.rules, rule]);
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
   }
 
   Future<void> removeRule(int index) async {
-    await state.whenData((c) async {
-      final rules = List<RoutingRule>.from(c.rules);
-      if (index < rules.length) rules.removeAt(index);
-      final next = c.copyWith(rules: rules);
-      await LocalStore.saveRouting('default', next.toJson());
-      state = AsyncValue.data(next);
-    });
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+    if (index < rules.length) rules.removeAt(index);
+    final next = c.copyWith(rules: rules);
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
   }
 
   Future<void> applyPreset(RoutingConfig preset) async {
@@ -290,11 +290,11 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
   }
 
   Future<void> updateFinalOutbound(String outbound) async {
-    await state.whenData((c) async {
-      final next = c.copyWith(finalOutbound: outbound);
-      await LocalStore.saveRouting('default', next.toJson());
-      state = AsyncValue.data(next);
-    });
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final next = c.copyWith(finalOutbound: outbound);
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
   }
 }
 

@@ -276,12 +276,13 @@ class SettingsPage extends ConsumerWidget {
     Future<void> Function() action,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
     try {
       await action();
     } catch (e) {
       messenger.showSnackBar(SnackBar(
         content: Text('$e'),
-        backgroundColor: Theme.of(context).colorScheme.error,
+        backgroundColor: errorColor,
       ));
     }
   }
