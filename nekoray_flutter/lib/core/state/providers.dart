@@ -95,8 +95,6 @@ class ProfileListNotifier
         responseType: ResponseType.plain,
         // A subscription is text; refuse anything implausibly large.
         maxRedirects: 5,
-        maxContentLength: _maxSubscriptionBytes,
-        maxBodyLength: _maxSubscriptionBytes,
       ));
       final response = await dio.getUri<String>(uri);
       content = response.data ?? '';

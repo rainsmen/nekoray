@@ -257,10 +257,10 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text(t('cancel'))),
+              child: Text(I18n.t('cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(t('import'))),
+              child: Text(I18n.t('import'))),
         ],
       ),
     );
@@ -310,7 +310,7 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(t('cancel')),
+            child: Text(I18n.t('cancel')),
           ),
           FilledButton(
             onPressed: () async {
@@ -355,7 +355,7 @@ class SettingsPage extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(t('cancel')),
+            child: Text(I18n.t('cancel')),
           ),
           FilledButton(
             onPressed: () async {

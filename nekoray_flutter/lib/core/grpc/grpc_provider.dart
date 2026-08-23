@@ -69,7 +69,7 @@ final grpcConnectedProvider = Provider<bool>(
 ///
 /// Returns null on success, or a human-readable error message.
 Future<String?> connectToCore(
-  Ref ref, {
+  WidgetRef ref, {
   int requestedPort = 0,
   bool debug = false,
 }) async {
@@ -99,14 +99,14 @@ Future<String?> connectToCore(
 }
 
 /// Ensures a usable channel, reconnecting when the core has died.
-Future<String?> ensureConnected(Ref ref, {int requestedPort = 0}) async {
+Future<String?> ensureConnected(WidgetRef ref, {int requestedPort = 0}) async {
   final client = ref.read(grpcClientProvider);
   if (await client.checkHealth()) return null;
   return connectToCore(ref, requestedPort: requestedPort);
 }
 
 /// Disconnects and stops the core.
-Future<void> disconnectFromCore(Ref ref) async {
+Future<void> disconnectFromCore(WidgetRef ref) async {
   await ref.read(grpcClientProvider).disconnect();
   await ref.read(coreProcessProvider).stop();
   ref.read(coreConnectionProvider.notifier).state =

@@ -61,10 +61,6 @@ jobs:
             target: windows
           - platform: ubuntu-latest
             target: linux
-          - platform: macos-13
-            target: macos
-            package_target: macos
-            core_artifact: core-darwin-amd64
           - platform: macos-latest
             target: macos
             package_target: macos-arm64
@@ -241,8 +237,7 @@ jobs:
           |---|---|
           | Windows | `nekoray-*-windows64.zip` |
           | Linux | `nekoray-*-linux64.tar.gz` |
-          | macOS Intel | `nekoray-*-macos.zip` |
-          | macOS Apple Silicon | `nekoray-*-macos-arm64.zip` |
+          | macOS | `nekoray-*-macos*.zip` |
           | Android arm64 | `nekoray-*-android-arm64-v8a.apk` |
           | Android armv7 | `nekoray-*-android-armeabi-v7a.apk` |
           | Android x86_64 | `nekoray-*-android-x86_64.apk` |
