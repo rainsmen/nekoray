@@ -9,15 +9,10 @@ import (
 	"grpc_server"
 	"grpc_server/gen"
 
-	"github.com/matsuridayo/libneko/neko_common"
-	"github.com/matsuridayo/libneko/speedtest"
-
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/experimental/v2rayapi"
 	"github.com/sagernet/sing/service"
-
-	_ "unsafe" // for go:linkname version injection if needed
 )
 
 type server struct {
@@ -36,7 +31,7 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		}
 	}()
 
-	if neko_common.Debug {
+	if Debug {
 		log.Println("Start:", in.CoreConfig)
 	}
 
@@ -46,15 +41,6 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 	}
 
 	instance, instanceCancel, instanceCtx, err = createInstance([]byte(in.CoreConfig))
-	if err != nil {
-		return
-	}
-
-	// NOTE: upstream sing-box logs via its own log factory configured in the
-	// "log" field of the JSON config. The legacy MatsuriDayo fork exposed a
-	// SetLogWritter helper to bridge logs into neko_log.LogWriter; upstream
-	// does not, so log routing is controlled by the config's log section.
-
 	return
 }
 
@@ -75,10 +61,8 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 
 	instanceCancel()
 	instance.Close()
-
 	instance = nil
 	instanceCancel = nil
-
 	return
 }
 
@@ -97,7 +81,6 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 		var i *box.Box
 		var cancel context.CancelFunc
 		if in.Config != nil {
-			// Test instance
 			i, cancel, _, err = createInstance([]byte(in.Config.CoreConfig))
 			if i != nil {
 				defer i.Close()
@@ -107,16 +90,20 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 				return
 			}
 		} else {
-			// Test running instance
 			i = instance
 			if i == nil {
 				return
 			}
 		}
-		// Latency
-		out.Ms, err = speedtest.UrlTest(newProxyHttpClient(i), in.Url, in.Timeout, speedtest.UrlTestStandard_RTT)
+		// Native URL test (replaces libneko speedtest.UrlTest)
+		var ms int
+		ms, err = urlTest(newProxyHttpClient(i), in.Url, int(in.Timeout))
+		out.Ms = int32(ms)
 	} else if in.Mode == gen.TestMode_TcpPing {
-		out.Ms, err = speedtest.TcpPing(in.Address, in.Timeout)
+		// Native TCP ping (replaces libneko speedtest.TcpPing)
+		var ms int
+		ms, err = tcpPing(in.Address, int(in.Timeout))
+		out.Ms = int32(ms)
 	} else if in.Mode == gen.TestMode_FullTest {
 		i, cancel, _, err := createInstance([]byte(in.Config.CoreConfig))
 		if i != nil {
@@ -133,10 +120,6 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 }
 
 // QueryStats returns the traffic counter for the given outbound tag.
-//
-// On upstream sing-box, the V2RayServer's StatsService is obtained from the
-// service registry. Its GetStats method returns the counter value for a name
-// of the form "outbound>>>tag>>>traffic>>>direct|uplink|downlink".
 func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *gen.QueryStatsResp, _ error) {
 	out = &gen.QueryStatsResp{}
 
@@ -145,8 +128,6 @@ func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *ge
 		if v2rayServer != nil {
 			tracker := v2rayServer.StatsService()
 			if tracker != nil {
-				// The concrete *v2rayapi.StatsService exposes GetStats,
-				// which is not on the ConnectionTracker interface.
 				type statsQueryer interface {
 					GetStats(ctx context.Context, request *v2rayapi.GetStatsRequest) (*v2rayapi.GetStatsResponse, error)
 				}
@@ -165,13 +146,9 @@ func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *ge
 }
 
 // ListConnections lists active connections.
-// ListConnections lists active connections.
 //
-// Phase-1: returns empty. Full connection tracking requires either the
-// Clash API (/connections, needs experimental.clash_api enabled in config) or
-// the V2Ray API connection tracker. This is implemented in phase 2 together
-// with the Flutter connection-management UI.
+// Phase-1: returns empty. Full connection tracking requires the Clash API
+// (/connections), to be implemented in phase 2 with the Flutter UI.
 func (s *server) ListConnections(ctx context.Context, in *gen.EmptyReq) (*gen.ListConnectionsResp, error) {
-	out := &gen.ListConnectionsResp{}
-	return out, nil
+	return &gen.ListConnectionsResp{}, nil
 }

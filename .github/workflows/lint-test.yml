@@ -41,17 +41,3 @@ jobs:
           # also test the grpc_server module (where core config builder lives)
           cd ../../grpc_server
           go test ./... -v -cover
-
-  cpp-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checking out sources
-        uses: actions/checkout@v4
-
-      - name: Install clang-tidy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy
-
-      - name: clang-tidy version
-        run: clang-tidy --version

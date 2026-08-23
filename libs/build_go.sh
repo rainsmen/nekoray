@@ -28,7 +28,7 @@ popd
 pushd go/cmd/nekobox_core
 # sing-box upgrade may change dependency tree; resync go.sum.
 go mod tidy
-go build -v -o $DEST -trimpath -ldflags "-w -s -X github.com/matsuridayo/libneko/neko_common.Version_neko=$version_standalone" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
+go build -v -o $DEST -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
 popd
 
 #### Go: migrator (phase 1 data migration tool) ####
