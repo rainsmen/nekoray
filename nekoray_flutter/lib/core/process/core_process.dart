@@ -172,7 +172,9 @@ class CoreProcess {
       rethrow;
     }
 
-    _endpoint = CoreEndpoint(host: '127.0.0.1', port: port, token: token);
+    final ep = CoreEndpoint(host: '127.0.0.1', port: port, token: token);
+    _endpoint = ep;
+    return ep;
   }
 
   /// Stops the core, escalating to SIGKILL if it does not exit promptly.
