@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Builds the Go core for Android as a shared library (.so) using gomobile.
+# Builds the Go core for Android as a shared library (.so).
 #
 # Usage: build_android.sh
 #
 # Produces: deployment/android/{arm64-v8a,armeabi-v7a,x86_64}/libnekobox.so
+#
+# Requires: ANDROID_NDK_HOME or ANDROID_NDK_ROOT set, Go 1.22+
 
 set -e
 
@@ -12,45 +14,83 @@ DEST=$DEPLOYMENT/android
 rm -rf "$DEST"
 mkdir -p "$DEST"
 
-# Android NDK + gomobile required
 export CGO_ENABLED=1
 
-# Ensure gomobile is installed
-go install golang.org/x/mobile/cmd/gomobile@latest || true
-go install golang.org/x/mobile/cmd/gobind@latest || true
+# --- Locate NDK ---
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+  # Try common locations
+  for cand in \
+    "$ANDROID_HOME/ndk"/* \
+    "$ANDROID_SDK_ROOT/ndk"/* \
+    /usr/local/lib/android/sdk/ndk/*; do
+    if [ -d "$cand" ]; then
+      NDK="$cand"
+      break
+    fi
+  done
+fi
+if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+  echo "ERROR: Android NDK not found. Set ANDROID_NDK_HOME."
+  exit 1
+fi
+echo "==> Using NDK: $NDK"
+
+# Find the prebuilt dir (handle version + host variations)
+PREBUILT="$NDK/toolchains/llvm/prebuilt"
+HOST_DIR=""
+for h in linux-x86_64 darwin-x86_64 windows-x86_64; do
+  if [ -d "$PREBUILT/$h" ]; then
+    HOST_DIR="$h"
+    break
+  fi
+done
+if [ -z "$HOST_DIR" ]; then
+  echo "ERROR: NDK prebuilt host dir not found in $PREBUILT"
+  exit 1
+fi
+TOOLCHAIN="$PREBUILT/$HOST_DIR/bin"
+echo "==> Toolchain: $TOOLCHAIN"
 
 pushd go/cmd/nekobox_core
-
-# Tidy and ensure dependencies
 go mod tidy
 
-# Build for each Android ABI
-for ABI in arm64 arm x86_64; do
-  case $ABI in
-    arm64)  export GOARCH=arm64; NDK_ARCH=aarch64; ;;
-    arm)    export GOARCH=arm;   NDK_ARCH=arm;      ;;
-    x86_64) export GOARCH=amd64; NDK_ARCH=x86_64;   ;;
-  esac
+# ABI → GOARCH → NDK arch triple
+build_abi() {
+  local ABI=$1 GOARCH=$2 NDK_ARCH=$3 API=${4:-24}
+  echo "==> Building Android $ABI ($NDK_ARCH, API $API)"
+
   export GOOS=android
-  export GOARM=7
+  export GOARCH=$GOARCH
+  [ "$GOARCH" = "arm" ] && export GOARM=7 || unset GOARM
 
-  echo "==> Building Android $ABI ($NDK_ARCH)"
+  export CC="$TOOLCHAIN/${NDK_ARCH}-linux-android${API}-clang"
+  export CXX="$TOOLCHAIN/${NDK_ARCH}-linux-android${API}-clang++"
 
-  # Set NDK toolchain
-  if [ -n "$ANDROID_NDK_HOME" ]; then
-    export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/$NDK_ARCH-linux-android24-clang"
-    export CXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/$NDK_ARCH-linux-android24-clang++"
+  if [ ! -f "$CC" ]; then
+    echo "WARNING: $CC not found, trying API 21"
+    export CC="$TOOLCHAIN/${NDK_ARCH}-linux-android21-clang"
+    export CXX="$TOOLCHAIN/${NDK_ARCH}-linux-android21-clang++"
   fi
 
-  # Build as shared library
+  mkdir -p "$DEST/$ABI"
   go build -buildmode=c-shared \
     -o "$DEST/$ABI/libnekobox.so" \
     -trimpath -ldflags "-w -s" \
     -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls" \
     .
 
+  # Also copy the generated header for native bindings
+  [ -f go/cmd/nekobox_core/libnekobox.h ] && \
+    cp go/cmd/nekobox_core/libnekobox.h "$DEST/$ABI/" 2>/dev/null || \
+    cp libnekobox.h "$DEST/$ABI/" 2>/dev/null || true
+
   unset CC CXX
-done
+}
+
+build_abi arm64  arm64  aarch64
+build_abi arm    arm    armv7a  arm
+build_abi x86_64 amd64  x86_64
 
 popd
 echo "==> Android core build complete"

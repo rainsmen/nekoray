@@ -70,8 +70,15 @@ case "$TARGET" in
     echo "==> Created $ARCHIVE"
     ;;
   windows)
-    ARCHIVE="deployment/nekoray-$VERSION-windows64.zip"
-    (cd "$STAGING" && powershell Compress-Archive -Path nekoray -DestinationPath "../../$(basename $ARCHIVE)")
+    ARCHIVE="$PWD/deployment/nekoray-$VERSION-windows64.zip"
+    # Use 7-Zip (preinstalled on windows-latest) for reliable archiving
+    if command -v 7z &>/dev/null; then
+      7z a -tzip "$ARCHIVE" "$STAGING/nekoray" -mx=5
+    else
+      # Fallback to PowerShell Compress-Archive with absolute paths
+      powershell.exe -NoProfile -Command \
+        "Compress-Archive -Path '$(cygpath -w "$STAGING/nekoray" 2>/dev/null || echo "$STAGING/nekoray")' -DestinationPath '$(cygpath -w "$ARCHIVE" 2>/dev/null || echo "$ARCHIVE")' -Force"
+    fi
     echo "==> Created $ARCHIVE"
     ;;
   macos)
