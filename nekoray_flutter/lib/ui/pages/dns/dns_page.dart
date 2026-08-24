@@ -140,7 +140,7 @@ class DnsPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: dnsStrategies.containsKey(config.remoteDnsStrategy)
+                      initialValue: dnsStrategies.containsKey(config.remoteDnsStrategy)
                           ? config.remoteDnsStrategy
                           : 'ipv4_only',
                       decoration: const InputDecoration(
@@ -221,7 +221,7 @@ class DnsPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: dnsStrategies.containsKey(config.directDnsStrategy)
+                      initialValue: dnsStrategies.containsKey(config.directDnsStrategy)
                           ? config.directDnsStrategy
                           : 'ipv4_only',
                       decoration: const InputDecoration(

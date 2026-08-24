@@ -421,7 +421,7 @@ class _RoutingPageState extends State<RoutingPage>
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
       ));
-      final resp = await dio.head(item.url);
+      await dio.head(item.url);
       if (mounted) {
         setState(() {
           item.isUpdating = false;
@@ -744,7 +744,7 @@ class _RoutingPageState extends State<RoutingPage>
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: scheme.onSurfaceVariant
-                                        .withOpacity(0.7),
+                                        .withValues(alpha: 0.7),
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,

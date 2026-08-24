@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
-import '../../../core/state/settings.dart';
 
 /// One sample of throughput, in bytes per second.
 class TrafficPoint {
@@ -546,9 +545,9 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.15),
+                    color: badgeColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: badgeColor.withOpacity(0.4)),
+                    border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     badgeText,
