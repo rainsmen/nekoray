@@ -79,7 +79,7 @@ class _LogsPageState extends ConsumerState<LogsPage> {
       return scheme.primary;
     }
     if (lower.contains('debug') || lower.contains('trace')) {
-      return scheme.onSurfaceVariant.withValues(alpha: 0.7);
+      return scheme.onSurfaceVariant.withOpacity(0.7);
     }
     return scheme.onSurface;
   }
@@ -222,7 +222,7 @@ class _LogsPageState extends ConsumerState<LogsPage> {
                     ),
                   )
                 : Container(
-                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    color: scheme.surfaceContainerHighest.withOpacity(0.3),
                     child: SelectionArea(
                       child: ListView.builder(
                         controller: _scrollController,

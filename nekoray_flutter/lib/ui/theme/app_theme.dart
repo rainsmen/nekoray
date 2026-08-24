@@ -19,9 +19,7 @@ class AppTheme {
   ];
 
   static TextTheme _buildTextTheme(Brightness brightness) {
-    final base = brightness == Brightness.dark
-        ? Typography.material2021().white
-        : Typography.material2021().black;
+    final base = (brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light()).textTheme;
 
     return base.apply(
       fontFamilyFallback: fontFallbacks,
@@ -117,7 +115,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
+                ? Colors.white.withOpacity(0.08)
                 : const Color(0xFFE2E8F0),
             width: 1,
           ),
@@ -145,7 +143,7 @@ class AppTheme {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           side: BorderSide(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.15)
+                ? Colors.white.withOpacity(0.15)
                 : const Color(0xFFCBD5E1),
           ),
         ),
@@ -153,14 +151,14 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark
-            ? Colors.black.withValues(alpha: 0.2)
+            ? Colors.black.withOpacity(0.2)
             : const Color(0xFFF1F5F9),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
+                ? Colors.white.withOpacity(0.1)
                 : const Color(0xFFCBD5E1),
           ),
         ),
@@ -168,7 +166,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
+                ? Colors.white.withOpacity(0.08)
                 : const Color(0xFFE2E8F0),
           ),
         ),
@@ -184,7 +182,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide(
           color: isDark
-              ? Colors.white.withValues(alpha: 0.1)
+              ? Colors.white.withOpacity(0.1)
               : const Color(0xFFE2E8F0),
         ),
         labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
@@ -194,7 +192,7 @@ class AppTheme {
         indicatorColor: scheme.primaryContainer,
         selectedIconTheme: IconThemeData(color: scheme.onPrimaryContainer),
         unselectedIconTheme: IconThemeData(
-          color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
+          color: scheme.onSurfaceVariant.withOpacity(0.8),
         ),
         labelType: NavigationRailLabelType.all,
         selectedLabelTextStyle: TextStyle(
@@ -214,26 +212,10 @@ class AppTheme {
         backgroundColor: scheme.surface,
         elevation: 2,
         indicatorColor: scheme.primaryContainer,
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return TextStyle(
-              fontFamilyFallback: fontFallbacks,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: scheme.primary,
-            );
-          }
-          return TextStyle(
-            fontFamilyFallback: fontFallbacks,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: scheme.onSurfaceVariant,
-          );
-        }),
       ),
       dividerTheme: DividerThemeData(
         color: isDark
-            ? Colors.white.withValues(alpha: 0.08)
+            ? Colors.white.withOpacity(0.08)
             : const Color(0xFFE2E8F0),
         thickness: 1,
         space: 1,

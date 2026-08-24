@@ -60,7 +60,7 @@ class ProxyCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: _latencyColor().withValues(alpha: 0.15),
+                  color: _latencyColor().withOpacity(0.15),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
