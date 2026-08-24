@@ -188,12 +188,12 @@ class SettingsPage extends ConsumerWidget {
                 SwitchListTile(
                   secondary: const Icon(Icons.open_in_new),
                   title: Text(t('startWithSystem')),
-                  subtitle: Text(SystemIntegration.supportsAutostart
+                  subtitle: Text(SystemIntegration.supportsAutoStart
                       ? 'Launch minimized when you log in'
                       : 'Not supported on this platform'),
-                  value: settings.startWithSystem,
-                  onChanged: SystemIntegration.supportsAutostart
-                      ? (v) => _guard(context, () => notifier.setStartWithSystem(v))
+                  value: settings.autoStart,
+                  onChanged: SystemIntegration.supportsAutoStart
+                      ? (v) => _guard(context, () => notifier.setAutoStart(v))
                       : null,
                 ),
                 const Divider(height: 1),
@@ -549,10 +549,10 @@ class SettingsPage extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final oldDir = Directory.current;
 
-    final preview = await DataMigration.preview(oldDir);
+    final preview = await DataMigration.migrateFrom(oldDir.path, dryRun: true);
     if (!context.mounted) return;
 
-    if (preview.isEmpty) {
+    if (preview.profiles == 0 && preview.groups == 0) {
       messenger.showSnackBar(SnackBar(
         content: Text('No legacy profiles found in ${oldDir.path}'),
       ));
@@ -567,8 +567,8 @@ class SettingsPage extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Found ${preview.profiles.length} profile(s) and '
-                '${preview.groups.length} group(s) in:'),
+            Text('Found ${preview.profiles} profile(s) and '
+                '${preview.groups} group(s) in:'),
             const SizedBox(height: 4),
             Text(oldDir.path,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -592,7 +592,7 @@ class SettingsPage extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
-    final report = await DataMigration.migrateFrom(oldDir);
+    final report = await DataMigration.migrateFrom(oldDir.path);
     await ref.read(profileListProvider.notifier).load();
     await ref.read(groupListProvider.notifier).load();
     messenger.showSnackBar(SnackBar(content: Text(report.toString())));

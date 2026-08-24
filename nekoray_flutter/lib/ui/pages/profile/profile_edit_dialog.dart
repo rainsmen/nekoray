@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/state/providers.dart';
 import '../../components/dynamic_form.dart';
