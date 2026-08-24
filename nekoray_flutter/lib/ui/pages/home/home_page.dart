@@ -420,7 +420,7 @@ class _ProfilesTab extends ConsumerWidget {
     final profileName = profile.name.isEmpty ? profile.address : profile.name;
 
     try {
-      ref.read(coreLogProvider.notifier).add('[INFO] Starting proxy for node: $profileName (${profile.protocol})');
+      ref.read(coreLogProvider.notifier).add('[INFO] Starting proxy for node: $profileName (${profile.type})');
       final connectError =
           await ensureConnected(ref, requestedPort: settings.corePort);
       if (connectError != null) {
