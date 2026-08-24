@@ -64,10 +64,11 @@ fi
 cp "$CORE_DIR/$CORE_BIN" "$CORE_DEST/"
 chmod +x "$CORE_DEST/$CORE_BIN" 2>/dev/null || true
 
-# Optional helpers: absent is fine, but a failed copy is not.
-for helper in updater launcher migrator updater.exe migrator.exe; do
+# Optional helpers and native libraries:
+for helper in updater launcher migrator updater.exe migrator.exe libcronet.dll libcronet.so libcronet.dylib; do
   if [ -f "$CORE_DIR/$helper" ]; then
-    cp "$CORE_DIR/$helper" "$CORE_DEST/"
+    cp -f "$CORE_DIR/$helper" "$CORE_DEST/"
+    chmod +x "$CORE_DEST/$helper" 2>/dev/null || true
   fi
 done
 if [[ "$TARGET" == macos || "$TARGET" == macos-arm64 ]]; then

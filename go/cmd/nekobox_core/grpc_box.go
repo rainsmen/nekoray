@@ -57,6 +57,7 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 	defer func() {
 		out = &gen.ErrorResp{}
 		if err != nil {
+			log.Println("[ERROR] Start proxy core failed:", err)
 			out.Error = err.Error()
 			instance = nil
 		}

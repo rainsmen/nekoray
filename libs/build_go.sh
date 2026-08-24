@@ -28,6 +28,18 @@ popd
 pushd go/cmd/nekobox_core
 go mod tidy
 go build -v -o "$DEST" -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego"
+
+CRONET_PKG="github.com/sagernet/cronet-go/lib/${GOOS}_${GOARCH}"
+CRONET_DIR=$(go list -m -f '{{.Dir}}' "$CRONET_PKG" 2>/dev/null || true)
+if [ -n "$CRONET_DIR" ] && [ -d "$CRONET_DIR" ]; then
+  echo "==> Copying libcronet from $CRONET_DIR to $DEST"
+  for f in "$CRONET_DIR"/libcronet.dll "$CRONET_DIR"/libcronet.so "$CRONET_DIR"/libcronet.dylib; do
+    if [ -f "$f" ]; then
+      cp -f "$f" "$DEST/"
+      chmod +x "$DEST/$(basename "$f")" 2>/dev/null || true
+    fi
+  done
+fi
 popd
 
 #### Go: migrator (phase 1 data migration tool) ####

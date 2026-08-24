@@ -89,9 +89,11 @@ Future<String?> connectToCore(
     );
     connection.state =
         CoreConnection(CoreConnectionState.connected, port: endpoint.port);
+    ref.read(coreLogProvider.notifier).add('[INFO] Connected to nekobox_core on port ${endpoint.port}');
     return null;
   } catch (e) {
     final message = e is CoreProcessException ? e.message : e.toString();
+    ref.read(coreLogProvider.notifier).add('[ERROR] Core connection error: $message');
     connection.state =
         CoreConnection(CoreConnectionState.failed, error: message);
     return message;

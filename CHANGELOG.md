@@ -1,5 +1,15 @@
 # Changelog
 
+## v5.0.0-beta.11 — Bundled libcronet for NaiveProxy & Live Startup Logs Capture (2026-08-24)
+
+### Critical Bug Fixes & Diagnostics Enhancements
+- **Bundled `libcronet` Dynamic Libraries for NaiveProxy**:
+  - Resolved `cronet: library not found. Place libcronet.dll in the executable directory or PATH` error when starting Naive nodes.
+  - Automatically bundled `libcronet.dll` (Windows), `libcronet.so` (Linux), and `libcronet.dylib` (macOS) in the core build and distribution packages alongside `nekobox_core` and `nekoray`.
+- **Live Startup & Lifecycle Logs Capture in Logs Page (启动失败日志完整捕获)**:
+  - Added real-time error logging to `coreLogProvider` for core connection failures, bootstrap issues, proxy start errors, and proxy stop events.
+  - Core process logs all `Start` failures to stdout so all exceptions are immediately visible with high-contrast badge colors on the Logs page.
+
 ## v5.0.0-beta.10 — Rule-Sets Upgrade, Modern Theme System, Clean Release Packaging & Windows Process Cleanup (2026-08-24)
 
 ### New Features & Enhancements

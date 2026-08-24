@@ -403,8 +403,10 @@ class _ProfilesTab extends ConsumerWidget {
     try {
       await ref.read(grpcClientProvider).stopCore();
       ref.read(connectedProfileProvider.notifier).state = 0;
+      ref.read(coreLogProvider.notifier).add('[INFO] Proxy stopped');
       messenger.showSnackBar(const SnackBar(content: Text('Stopped proxy')));
     } catch (e) {
+      ref.read(coreLogProvider.notifier).add('[ERROR] Failed to stop proxy: $e');
       messenger.showSnackBar(
         SnackBar(content: Text('Failed to stop: $e'), backgroundColor: Colors.red),
       );
@@ -415,8 +417,10 @@ class _ProfilesTab extends ConsumerWidget {
       BuildContext context, WidgetRef ref, ProxyEntity profile) async {
     final messenger = ScaffoldMessenger.of(context);
     final settings = ref.read(settingsProvider);
+    final profileName = profile.name.isEmpty ? profile.address : profile.name;
 
     try {
+      ref.read(coreLogProvider.notifier).add('[INFO] Starting proxy for node: $profileName (${profile.protocol})');
       final connectError =
           await ensureConnected(ref, requestedPort: settings.corePort);
       if (connectError != null) {
@@ -463,11 +467,12 @@ class _ProfilesTab extends ConsumerWidget {
       if (startResp.error.isNotEmpty) throw Exception(startResp.error);
 
       ref.read(connectedProfileProvider.notifier).state = profile.id;
+      ref.read(coreLogProvider.notifier).add('[INFO] Proxy successfully started for $profileName');
       messenger.showSnackBar(SnackBar(
-          content: Text('Started proxy for '
-              '${profile.name.isEmpty ? profile.address : profile.name}')));
+          content: Text('Started proxy for $profileName')));
     } catch (e) {
       ref.read(connectedProfileProvider.notifier).state = 0;
+      ref.read(coreLogProvider.notifier).add('[ERROR] Failed to start $profileName: $e');
       messenger.showSnackBar(
         SnackBar(content: Text('Failed to start: $e'), backgroundColor: Colors.red),
       );
