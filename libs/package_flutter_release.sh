@@ -78,21 +78,21 @@ fi
 mkdir -p deployment
 case "$TARGET" in
   linux)
-    ARCHIVE="deployment/nekoray-$VERSION-linux64.tar.gz"
+    ARCHIVE="$PWD/deployment/nekoray-$VERSION-linux64.tar.gz"
     tar -czf "$ARCHIVE" -C "$STAGING" nekoray
     ;;
   windows)
     ARCHIVE="$PWD/deployment/nekoray-$VERSION-windows64.zip"
     if command -v 7z >/dev/null 2>&1; then
-      7z a -tzip "$ARCHIVE" "$STAGING/nekoray" -mx=5 >/dev/null
+      (cd "$STAGING" && 7z a -tzip "$ARCHIVE" nekoray -mx=5 >/dev/null)
     else
       powershell.exe -NoProfile -Command \
-        "Compress-Archive -Path '$(cygpath -w "$STAGING/nekoray" 2>/dev/null || echo "$STAGING/nekoray")' -DestinationPath '$(cygpath -w "$ARCHIVE" 2>/dev/null || echo "$ARCHIVE")' -Force"
+        "Set-Location '$(cygpath -w "$STAGING" 2>/dev/null || echo "$STAGING")'; Compress-Archive -Path 'nekoray' -DestinationPath '$(cygpath -w "$ARCHIVE" 2>/dev/null || echo "$ARCHIVE")' -Force"
     fi
     ;;
   macos|macos-arm64)
-    ARCHIVE="deployment/nekoray-$VERSION-$TARGET.zip"
-    (cd "$STAGING" && zip -qr "../$(basename "$ARCHIVE")" nekoray.app)
+    ARCHIVE="$PWD/deployment/nekoray-$VERSION-$TARGET.zip"
+    (cd "$STAGING" && zip -qr "$ARCHIVE" nekoray.app)
     ;;
 esac
 

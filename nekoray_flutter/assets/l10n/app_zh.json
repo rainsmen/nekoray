@@ -68,5 +68,9 @@
   "latency": "延迟",
   "untested": "未测试",
   "status": "状态",
-  "rules": "路由规则"
+  "rules": "路由规则",
+  "themeMode": "主题风格",
+  "themeSystem": "跟随系统",
+  "themeDark": "深色模式",
+  "themeLight": "浅色模式"
 }

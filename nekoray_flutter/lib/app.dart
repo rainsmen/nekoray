@@ -95,18 +95,31 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
     } catch (_) {
       // Shutting down anyway.
     }
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    if (_isDesktop) {
+      try {
+        await trayManager.destroy();
+      } catch (_) {}
+      await windowManager.setPreventClose(false);
+      await windowManager.destroy();
+    }
+    exit(0);
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final themeMode = switch (settings.themeMode) {
+      'dark' => ThemeMode.dark,
+      'light' => ThemeMode.light,
+      _ => ThemeMode.system,
+    };
+
     return MaterialApp(
       title: 'NekoRay',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: const HomePage(),
     );
   }

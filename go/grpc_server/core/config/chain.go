@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 
@@ -180,13 +181,23 @@ func isIPAddress(s string) bool {
 	return net.ParseIP(host) != nil
 }
 
+func getRuleSetURL(tag string) string {
+	if strings.HasPrefix(tag, "geoip-") {
+		return fmt.Sprintf("https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/%s.srs", tag)
+	}
+	return fmt.Sprintf("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/%s.srs", tag)
+}
+
 // makeRule mirrors the make_rule lambda in ConfigBuilder.cpp.
 //
 // It converts a list of v2ray-style rule strings (geosite:/geoip:/domain:/...)
-// into a sing-box rule object.
+// into a sing-box rule object conforming to sing-box 1.13+ rule_set standards.
 func makeRule(list []string, isIP bool) map[string]interface{} {
 	rule := map[string]interface{}{}
-	var ipCidr, geoip, domainKeyword, domainSubdomain, domainRegexp, domainFull, geosite []interface{}
+	var ipCidr, domainKeyword, domainSubdomain, domainRegexp, domainFull []interface{}
+	var ruleSetTags []string
+	var ipIsPrivate bool
+
 	for _, item := range list {
 		item = strings.TrimSpace(item)
 		if item == "" {
@@ -194,14 +205,26 @@ func makeRule(list []string, isIP bool) map[string]interface{} {
 		}
 		if isIP {
 			if strings.HasPrefix(item, "geoip:") {
-				geoip = append(geoip, strings.TrimPrefix(item, "geoip:"))
+				name := strings.TrimPrefix(item, "geoip:")
+				if name == "private" {
+					ipIsPrivate = true
+				} else {
+					tag := "geoip-" + name
+					ruleSetTags = append(ruleSetTags, tag)
+				}
 			} else {
 				ipCidr = append(ipCidr, item)
 			}
 		} else {
 			switch {
 			case strings.HasPrefix(item, "geosite:"):
-				geosite = append(geosite, strings.TrimPrefix(item, "geosite:"))
+				name := strings.TrimPrefix(item, "geosite:")
+				if name == "private" {
+					ipIsPrivate = true
+				} else {
+					tag := "geosite-" + name
+					ruleSetTags = append(ruleSetTags, tag)
+				}
 			case strings.HasPrefix(item, "full:"):
 				domainFull = append(domainFull, strings.ToLower(strings.TrimPrefix(item, "full:")))
 			case strings.HasPrefix(item, "domain:"):
@@ -216,17 +239,20 @@ func makeRule(list []string, isIP bool) map[string]interface{} {
 		}
 	}
 	if isIP {
-		if len(ipCidr) == 0 && len(geoip) == 0 {
+		if len(ipCidr) == 0 && len(ruleSetTags) == 0 && !ipIsPrivate {
 			return nil
 		}
 		if len(ipCidr) > 0 {
 			rule["ip_cidr"] = ipCidr
 		}
-		if len(geoip) > 0 {
-			rule["geoip"] = geoip
+		if len(ruleSetTags) > 0 {
+			rule["rule_set"] = ruleSetTags
+		}
+		if ipIsPrivate {
+			rule["ip_is_private"] = true
 		}
 	} else {
-		if len(domainKeyword) == 0 && len(domainSubdomain) == 0 && len(domainRegexp) == 0 && len(domainFull) == 0 && len(geosite) == 0 {
+		if len(domainKeyword) == 0 && len(domainSubdomain) == 0 && len(domainRegexp) == 0 && len(domainFull) == 0 && len(ruleSetTags) == 0 && !ipIsPrivate {
 			return nil
 		}
 		if len(domainFull) > 0 {
@@ -241,8 +267,11 @@ func makeRule(list []string, isIP bool) map[string]interface{} {
 		if len(domainRegexp) > 0 {
 			rule["domain_regex"] = domainRegexp
 		}
-		if len(geosite) > 0 {
-			rule["geosite"] = geosite
+		if len(ruleSetTags) > 0 {
+			rule["rule_set"] = ruleSetTags
+		}
+		if ipIsPrivate {
+			rule["ip_is_private"] = true
 		}
 	}
 	return rule
@@ -470,9 +499,61 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 		allRules = append(allRules, r)
 	}
 
+	// Collect all referenced rule_set tags across all rules
+	ruleSetMap := make(map[string]bool)
+	collectRuleSets := func(rules []interface{}) {
+		for _, r := range rules {
+			if m, ok := r.(map[string]interface{}); ok {
+				if rs, ok := m["rule_set"].([]string); ok {
+					for _, tag := range rs {
+						ruleSetMap[tag] = true
+					}
+				} else if rs, ok := m["rule_set"].([]interface{}); ok {
+					for _, tag := range rs {
+						if s, ok := tag.(string); ok {
+							ruleSetMap[s] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	collectRuleSets(allRules)
+	if dnsObj, ok := result.CoreConfig["dns"].(map[string]interface{}); ok {
+		if dnsRules, ok := dnsObj["rules"].([]map[string]interface{}); ok {
+			for _, dr := range dnsRules {
+				if rs, ok := dr["rule_set"].([]string); ok {
+					for _, tag := range rs {
+						ruleSetMap[tag] = true
+					}
+				} else if rs, ok := dr["rule_set"].([]interface{}); ok {
+					for _, tag := range rs {
+						if s, ok := tag.(string); ok {
+							ruleSetMap[s] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var ruleSetList []map[string]interface{}
+	for tag := range ruleSetMap {
+		ruleSetList = append(ruleSetList, map[string]interface{}{
+			"tag":             tag,
+			"type":            "remote",
+			"format":          "binary",
+			"url":             getRuleSetURL(tag),
+			"download_detour": "direct",
+		})
+	}
+
 	routeObj := map[string]interface{}{
 		"rules":                 allRules,
 		"auto_detect_interface": ds.SpmodeVPN,
+	}
+	if len(ruleSetList) > 0 {
+		routeObj["rule_set"] = ruleSetList
 	}
 	if routing.DomainStrategy != "" {
 		routeObj["default_domain_resolver"] = map[string]interface{}{

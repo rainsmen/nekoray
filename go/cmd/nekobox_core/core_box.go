@@ -20,7 +20,7 @@ var instanceCtx context.Context
 var instanceCancel context.CancelFunc
 
 // CoreVersion is the nekobox_core version (printed on startup).
-const CoreVersion = "5.0.0-beta.9"
+const CoreVersion = "5.0.0-beta.10"
 
 // Debug toggles verbose logging (set via --debug flag).
 var Debug bool

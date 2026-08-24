@@ -851,15 +851,21 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
 Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
   final map = <String, dynamic>{};
 
-  final geosite = <String>[];
+  final ruleSet = <String>[];
   final domainFull = <String>[];
   final domainSuffix = <String>[];
   final domainKeyword = <String>[];
   final domainRegexp = <String>[];
+  bool ipIsPrivate = false;
 
   for (final d in rule.domains) {
     if (d.startsWith('geosite:')) {
-      geosite.add(d.substring(8));
+      final name = d.substring(8);
+      if (name == 'private') {
+        ipIsPrivate = true;
+      } else {
+        ruleSet.add('geosite-$name');
+      }
     } else if (d.startsWith('full:')) {
       domainFull.add(d.substring(5));
     } else if (d.startsWith('domain:')) {
@@ -873,22 +879,26 @@ Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
     }
   }
 
-  final geoip = <String>[];
   final ipCidr = <String>[];
   for (final ip in rule.ip) {
     if (ip.startsWith('geoip:')) {
-      geoip.add(ip.substring(6));
+      final name = ip.substring(6);
+      if (name == 'private') {
+        ipIsPrivate = true;
+      } else {
+        ruleSet.add('geoip-$name');
+      }
     } else {
       ipCidr.add(ip);
     }
   }
 
-  if (geosite.isNotEmpty) map['geosite'] = geosite;
+  if (ruleSet.isNotEmpty) map['rule_set'] = ruleSet;
+  if (ipIsPrivate) map['ip_is_private'] = true;
   if (domainFull.isNotEmpty) map['domain'] = domainFull;
   if (domainSuffix.isNotEmpty) map['domain_suffix'] = domainSuffix;
   if (domainKeyword.isNotEmpty) map['domain_keyword'] = domainKeyword;
   if (domainRegexp.isNotEmpty) map['domain_regex'] = domainRegexp;
-  if (geoip.isNotEmpty) map['geoip'] = geoip;
   if (ipCidr.isNotEmpty) map['ip_cidr'] = ipCidr;
 
   if (rule.port.isNotEmpty) {

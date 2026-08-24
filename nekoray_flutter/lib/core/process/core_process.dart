@@ -192,14 +192,22 @@ class CoreProcess {
 
     if (process == null) return;
 
-    process.kill(ProcessSignal.sigterm);
-    try {
-      await process.exitCode.timeout(grace);
-    } on TimeoutException {
-      process.kill(ProcessSignal.sigkill);
+    if (Platform.isWindows) {
       try {
-        await process.exitCode.timeout(const Duration(seconds: 2));
-      } catch (_) {}
+        await Process.run('taskkill', ['/F', '/T', '/PID', '${process.pid}']);
+      } catch (_) {
+        process.kill(ProcessSignal.sigkill);
+      }
+    } else {
+      process.kill(ProcessSignal.sigterm);
+      try {
+        await process.exitCode.timeout(grace);
+      } on TimeoutException {
+        process.kill(ProcessSignal.sigkill);
+        try {
+          await process.exitCode.timeout(const Duration(seconds: 2));
+        } catch (_) {}
+      }
     }
   }
 

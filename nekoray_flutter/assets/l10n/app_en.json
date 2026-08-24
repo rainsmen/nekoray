@@ -68,5 +68,9 @@
   "latency": "Latency",
   "untested": "Untested",
   "status": "Status",
-  "rules": "Rules"
+  "rules": "Rules",
+  "themeMode": "Theme Mode",
+  "themeSystem": "Follow System",
+  "themeDark": "Dark",
+  "themeLight": "Light"
 }

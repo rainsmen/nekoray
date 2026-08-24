@@ -1,5 +1,23 @@
 # Changelog
 
+## v5.0.0-beta.10 — Rule-Sets Upgrade, Modern Theme System, Clean Release Packaging & Windows Process Cleanup (2026-08-24)
+
+### New Features & Enhancements
+- **sing-box 1.13 Rule-Sets Architecture Migration (分流与规则集彻底升级)**:
+  - Resolved `geosite database is deprecated in sing-box 1.8.0 and removed in sing-box 1.12.0` error.
+  - Automatically converted all `geosite:xxx` and `geoip:xxx` references to modern binary `rule_set: ["geosite-xxx", "geoip-xxx"]`.
+  - Automatically generated `route.rule_set` download entries pointing to official binary `.srs` repositories.
+  - Native private IP detection with `ip_is_private: true`.
+- **Modern UI Theme System & Windows Typography Optimization (现代化 UI 与主题模式)**:
+  - Redesigned Material 3 theme palette with rich Slate dark mode (`#0F172A` / `#1E293B`) and crisp porcelain light mode.
+  - Added Theme Mode selector: **Follow System (跟随系统)**, **Dark Mode (深色模式)**, and **Light Mode (浅色模式)** in Settings.
+  - Optimized Windows font rendering and fallback cascade (`Microsoft YaHei UI`, `Segoe UI Variable Display`, `Segoe UI`, `PingFang SC`, `Noto Sans SC`).
+- **Release Packaging Clean Folder Structure (发布压缩包解压层级精简)**:
+  - Fixed Windows/Linux/macOS release archives so that extracting directly yields a single `nekoray/` root folder with no intermediate build staging path.
+- **Process & Directory Lock Cleanup on Windows (进程退出与文件夹占用彻底解决)**:
+  - Force-terminate core process tree on Windows with `taskkill /F /T /PID` on shutdown.
+  - Cleanly destroy tray manager and window listeners and invoke `exit(0)` on quit to prevent folder lock errors.
+
 ## v5.0.0-beta.9 — sing-box 1.13 Migration: Legacy Inbounds & DNS Outbound Clean (2026-08-24)
 
 ### Critical Bug Fixes & sing-box 1.13 Migration

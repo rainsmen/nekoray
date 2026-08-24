@@ -153,6 +153,58 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: Icon(
+                    settings.themeMode == 'dark'
+                        ? Icons.dark_mode_outlined
+                        : (settings.themeMode == 'light'
+                            ? Icons.light_mode_outlined
+                            : Icons.brightness_auto_outlined),
+                  ),
+                  title: Text(t('themeMode')),
+                  trailing: DropdownButton<String>(
+                    value: settings.themeMode,
+                    items: [
+                      DropdownMenuItem(
+                        value: 'system',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.brightness_auto, size: 18),
+                            const SizedBox(width: 8),
+                            Text(t('themeSystem')),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'dark',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.dark_mode, size: 18),
+                            const SizedBox(width: 8),
+                            Text(t('themeDark')),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'light',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.light_mode, size: 18),
+                            const SizedBox(width: 8),
+                            Text(t('themeLight')),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => v == null
+                        ? null
+                        : _guard(context, () => notifier.setThemeMode(v)),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.language),
                   title: const Text('Language'),
                   trailing: DropdownButton<String>(

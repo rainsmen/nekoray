@@ -21,6 +21,7 @@ class AppSettings {
   final String listenAddress;
   final String logLevel;
   final String locale;
+  final String themeMode;
   final bool checkPreRelease;
 
   const AppSettings({
@@ -33,6 +34,7 @@ class AppSettings {
     this.listenAddress = '127.0.0.1',
     this.logLevel = 'info',
     this.locale = 'zh',
+    this.themeMode = 'system',
     this.checkPreRelease = false,
   });
 
@@ -46,6 +48,7 @@ class AppSettings {
     String? listenAddress,
     String? logLevel,
     String? locale,
+    String? themeMode,
     bool? checkPreRelease,
   }) =>
       AppSettings(
@@ -58,6 +61,7 @@ class AppSettings {
         listenAddress: listenAddress ?? this.listenAddress,
         logLevel: logLevel ?? this.logLevel,
         locale: locale ?? this.locale,
+        themeMode: themeMode ?? this.themeMode,
         checkPreRelease: checkPreRelease ?? this.checkPreRelease,
       );
 
@@ -71,6 +75,7 @@ class AppSettings {
         listenAddress: (j['listen_address'] as String?) ?? '127.0.0.1',
         logLevel: (j['log_level'] as String?) ?? 'info',
         locale: (j['locale'] as String?) ?? 'zh',
+        themeMode: (j['theme_mode'] as String?) ?? 'system',
         checkPreRelease: j['check_pre_release'] == true,
       );
 
@@ -84,6 +89,7 @@ class AppSettings {
         'listen_address': listenAddress,
         'log_level': logLevel,
         'locale': locale,
+        'theme_mode': themeMode,
         'check_pre_release': checkPreRelease,
       };
 
@@ -155,6 +161,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     _ref.read(localeProvider.notifier).state = locale;
     await _persist(state.copyWith(locale: locale));
   }
+
+  Future<void> setThemeMode(String v) =>
+      _persist(state.copyWith(themeMode: v));
 
   Future<void> setCheckPreRelease(bool v) =>
       _persist(state.copyWith(checkPreRelease: v));
