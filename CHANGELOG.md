@@ -1,5 +1,19 @@
 # Changelog
 
+## v5.0.0-beta.9 — sing-box 1.13 Migration: Legacy Inbounds & DNS Outbound Clean (2026-08-24)
+
+### Critical Bug Fixes & sing-box 1.13 Migration
+- **Migrated Legacy Inbound Fields to Route Rule Actions**:
+  - Resolved `legacy inbound fields are deprecated in sing-box 1.11.0 and removed in sing-box 1.13.0` error upon node startup.
+  - Stripped deprecated `sniff`, `sniff_override_destination`, and `domain_strategy` fields from `mixed-in` and `tun-in` inbound objects.
+  - Migrated sniffing to `route.rules` action rule (`{"action": "sniff"}`).
+  - Bound `domain_strategy` to `route.default_domain_resolver` (`{"server": "dns-direct", "strategy": "..."}`).
+- **Migrated DNS Outbound to Hijack-DNS Action**:
+  - Removed deprecated `{"type": "dns", "tag": "dns-out"}` outbound object.
+  - Migrated DNS hijacking rule to `{"protocol": "dns", "action": "hijack-dns"}`.
+- **Production Integration Testing**:
+  - Verified full live node startup (inbound binding + outbound startup + route execution) across all 14 protocols.
+
 ## v5.0.0-beta.8 — Protocol Context Registry Fix, Logs Page, Speed Test & Rule-Sets (2026-08-24)
 
 ### New Features & Enhancements

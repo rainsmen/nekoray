@@ -24,7 +24,7 @@ func TestAllProtocolsCreateInstance(t *testing.T) {
 
 	ds := &nekokfmt.DataStore{
 		InboundAddress:       "127.0.0.1",
-		InboundSocksPort:     0, // test mode
+		InboundSocksPort:     2080,
 		LogLevel:             "info",
 		CoreBoxUnderlyingDNS: "local",
 	}
@@ -234,7 +234,7 @@ func TestAllProtocolsCreateInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := config.BuildConfig(tt.ent, nil, routing, ds, true, false)
+			res := config.BuildConfig(tt.ent, nil, routing, ds, false, false)
 			if res.Error != "" {
 				t.Fatalf("BuildConfig failed: %v", res.Error)
 			}

@@ -46,7 +46,7 @@ const updateSessionTTL = 15 * time.Minute
 
 // CurrentVersion is the version string used for update checking.
 // It is set by the core on startup via SetVersion.
-var CurrentVersion = "5.0.0-beta.8"
+var CurrentVersion = "5.0.0-beta.9"
 
 // maxUpdateBytes caps a downloaded update package (512 MiB).
 const maxUpdateBytes = 512 << 20

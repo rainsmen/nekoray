@@ -1,7 +1,7 @@
 name: nekoray
 description: A modern cross-platform proxy client (sing-box backend).
 publish_to: "none"
-version: 5.0.0-beta.8
+version: 5.0.0-beta.9
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

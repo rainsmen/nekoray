@@ -378,7 +378,7 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	if !status.ForTest {
 		status.RoutingRules = append(status.RoutingRules, map[string]interface{}{
 			"protocol": "dns",
-			"outbound": "dns-out",
+			"action":   "hijack-dns",
 		})
 	}
 
@@ -459,6 +459,11 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	}
 
 	allRules := []interface{}{}
+	if routing.SniffingMode != nekokfmt.SniffingModeDisable {
+		allRules = append(allRules, map[string]interface{}{
+			"action": "sniff",
+		})
+	}
 	allRules = append(allRules, customRules...)
 	allRules = append(allRules, customGlobalRules...)
 	for _, r := range status.RoutingRules {
@@ -466,9 +471,16 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	}
 
 	routeObj := map[string]interface{}{
-		"rules":                   allRules,
-		"auto_detect_interface":   ds.SpmodeVPN,
-		"default_domain_resolver": "dns-direct",
+		"rules":                 allRules,
+		"auto_detect_interface": ds.SpmodeVPN,
+	}
+	if routing.DomainStrategy != "" {
+		routeObj["default_domain_resolver"] = map[string]interface{}{
+			"server":   "dns-direct",
+			"strategy": routing.DomainStrategy,
+		}
+	} else {
+		routeObj["default_domain_resolver"] = "dns-direct"
 	}
 	if !status.ForTest {
 		routeObj["final"] = routing.DefOutbound

@@ -137,12 +137,6 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 			"listen":      ds.InboundAddress,
 			"listen_port": ds.InboundSocksPort,
 		}
-		if routing.SniffingMode != nekokfmt.SniffingModeDisable {
-			inbound["sniff"] = true
-			if routing.SniffingMode == nekokfmt.SniffingModeForDestination {
-				inbound["sniff_override_destination"] = true
-			}
-		}
 		if ds.InboundAuthUsername != "" && ds.InboundAuthPassword != "" {
 			inbound["users"] = []map[string]interface{}{
 				{
@@ -151,7 +145,6 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 				},
 			}
 		}
-		inbound["domain_strategy"] = routing.DomainStrategy
 		status.Inbounds = append(status.Inbounds, inbound)
 	}
 
@@ -171,13 +164,6 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 		if ds.VPNIPv6 {
 			inbound["inet6_address"] = "fdfe:dcba:9876::1/126"
 		}
-		if routing.SniffingMode != nekokfmt.SniffingModeDisable {
-			inbound["sniff"] = true
-			if routing.SniffingMode == nekokfmt.SniffingModeForDestination {
-				inbound["sniff_override_destination"] = true
-			}
-		}
-		inbound["domain_strategy"] = routing.DomainStrategy
 		status.Inbounds = append(status.Inbounds, inbound)
 	}
 
@@ -187,17 +173,12 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 		return
 	}
 
-	// direct / bypass / block / dns-out
+	// direct / bypass / block
 	status.Outbounds = append(status.Outbounds,
 		map[string]interface{}{"type": "direct", "tag": "direct"},
 		map[string]interface{}{"type": "direct", "tag": "bypass"},
 		map[string]interface{}{"type": "block", "tag": "block"},
 	)
-	if !status.ForTest {
-		status.Outbounds = append(status.Outbounds,
-			map[string]interface{}{"type": "dns", "tag": "dns-out"},
-		)
-	}
 
 	// custom inbounds
 	if !status.ForTest && ds.CustomInbound != "" {
