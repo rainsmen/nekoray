@@ -250,7 +250,7 @@ func buildQUIC(b *nekokfmt.QUICBean) map[string]interface{} {
 		coreTls["alpn"] = strings.Split(b.Alpn, ",")
 	}
 	if b.ProxyType == nekokfmt.QUICProxyHysteria2 {
-		coreTls["alpn"] = "h3"
+		coreTls["alpn"] = []string{"h3"}
 	}
 
 	outbound := map[string]interface{}{
@@ -414,8 +414,6 @@ func buildSSH(b *nekokfmt.SSHBean) map[string]interface{} {
 func buildWireGuard(b *nekokfmt.WireGuardBean) map[string]interface{} {
 	outbound := map[string]interface{}{
 		"type":        "wireguard",
-		"server":      b.ServerAddress,
-		"server_port": b.ServerPort,
 		"private_key": strings.TrimSpace(b.PrivateKey),
 	}
 	if b.System {
@@ -447,10 +445,10 @@ func buildWireGuard(b *nekokfmt.WireGuardBean) map[string]interface{} {
 		outbound["workers"] = b.Workers
 	}
 
-	// Peer (sing-box v1.13 uses the single-peer endpoint model)
+	// Peer (sing-box v1.13 WireGuardPeer schema)
 	peer := map[string]interface{}{
-		"server":      b.ServerAddress,
-		"server_port": b.ServerPort,
+		"address": b.ServerAddress,
+		"port":    b.ServerPort,
 	}
 	if strings.TrimSpace(b.PeerPublicKey) != "" {
 		peer["public_key"] = strings.TrimSpace(b.PeerPublicKey)
@@ -467,6 +465,8 @@ func buildWireGuard(b *nekokfmt.WireGuardBean) map[string]interface{} {
 			}
 		}
 		peer["allowed_ips"] = trimmed
+	} else {
+		peer["allowed_ips"] = []string{"0.0.0.0/0", "::/0"}
 	}
 	if b.PeerKeepAlive > 0 {
 		peer["persistent_keepalive_interval"] = b.PeerKeepAlive

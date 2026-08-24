@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/storage/local_store.dart';
 
@@ -15,10 +17,6 @@ class RoutingConfig {
   List<RoutingRule> rules;
   String finalOutbound;
 
-  // DNS settings live alongside the rules so they are persisted in
-  // routing_default.json and actually reach the config builder. They used to
-  // be in-memory providers on the DNS page while `toGrpcRouting` hardcoded
-  // 8.8.8.8 / 119.29.29.29, so editing them changed nothing.
   String remoteDns;
   String directDns;
   String remoteDnsStrategy;
@@ -87,6 +85,8 @@ class RoutingConfig {
     String? finalOutbound,
     String? remoteDns,
     String? directDns,
+    String? remoteDnsStrategy,
+    String? directDnsStrategy,
     bool? fakeIp,
     bool? dnsRouting,
   }) =>
@@ -95,8 +95,8 @@ class RoutingConfig {
         finalOutbound: finalOutbound ?? this.finalOutbound,
         remoteDns: remoteDns ?? this.remoteDns,
         directDns: directDns ?? this.directDns,
-        remoteDnsStrategy: remoteDnsStrategy,
-        directDnsStrategy: directDnsStrategy,
+        remoteDnsStrategy: remoteDnsStrategy ?? this.remoteDnsStrategy,
+        directDnsStrategy: directDnsStrategy ?? this.directDnsStrategy,
         dnsRouting: dnsRouting ?? this.dnsRouting,
         fakeIp: fakeIp ?? this.fakeIp,
         dnsFinalOut: dnsFinalOut,
@@ -248,42 +248,19 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
     final c = state.valueOrNull;
     if (c == null) return;
     final rules = List<RoutingRule>.from(c.rules);
-    if (index < rules.length) rules.removeAt(index);
-    final next = c.copyWith(rules: rules);
-    await LocalStore.saveRouting('default', next.toJson());
-    state = AsyncValue.data(next);
+    if (index >= 0 && index < rules.length) {
+      rules.removeAt(index);
+      final next = c.copyWith(rules: rules);
+      await LocalStore.saveRouting('default', next.toJson());
+      state = AsyncValue.data(next);
+    }
   }
 
   Future<void> applyPreset(RoutingConfig preset) async {
-    // Keep the user's DNS settings when switching a routing preset — presets
-    // describe rules, not resolvers.
     final current = state.valueOrNull;
-    final next = current == null
-        ? preset
-        : preset.copyWith(
-            remoteDns: current.remoteDns,
-            directDns: current.directDns,
-            dnsRouting: current.dnsRouting,
-            fakeIp: current.fakeIp,
-          );
-    await LocalStore.saveRouting('default', next.toJson());
-    state = AsyncValue.data(next);
-  }
-
-  /// Updates the DNS half of the config and persists it.
-  Future<void> updateDns({
-    String? remoteDns,
-    String? directDns,
-    bool? dnsRouting,
-    bool? fakeIp,
-  }) async {
-    final current = state.valueOrNull;
-    if (current == null) return;
-    final next = current.copyWith(
-      remoteDns: remoteDns,
-      directDns: directDns,
-      dnsRouting: dnsRouting,
-      fakeIp: fakeIp,
+    final next = preset.copyWith(
+      remoteDns: current?.remoteDns,
+      directDns: current?.directDns,
     );
     await LocalStore.saveRouting('default', next.toJson());
     state = AsyncValue.data(next);
@@ -296,120 +273,509 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
     await LocalStore.saveRouting('default', next.toJson());
     state = AsyncValue.data(next);
   }
+
+  Future<void> updateDns({
+    String? remoteDns,
+    String? directDns,
+    bool? dnsRouting,
+    bool? fakeIp,
+  }) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final next = c.copyWith(
+      remoteDns: remoteDns,
+      directDns: directDns,
+      dnsRouting: dnsRouting,
+      fakeIp: fakeIp,
+    );
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
+  }
+
+  Future<void> updateDnsStrategy({String? remote, String? direct}) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final next = c.copyWith(
+      remoteDnsStrategy: remote,
+      directDnsStrategy: direct,
+    );
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
+  }
 }
 
-class RoutingPage extends ConsumerWidget {
+class RuleSetItem {
+  final String tag;
+  final String description;
+  final String url;
+  final String format; // 'binary' | 'source'
+  final String defaultOutbound;
+  bool isUpdating;
+  String? lastUpdated;
+  String? error;
+
+  RuleSetItem({
+    required this.tag,
+    required this.description,
+    required this.url,
+    this.format = 'binary',
+    this.defaultOutbound = 'direct',
+    this.isUpdating = false,
+    this.lastUpdated,
+    this.error,
+  });
+}
+
+class RoutingPage extends StatefulWidget {
   const RoutingPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watch(routingConfigProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Routing'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _addRule(context, ref),
+  State<RoutingPage> createState() => _RoutingPageState();
+}
+
+class _RoutingPageState extends State<RoutingPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  final List<RuleSetItem> _ruleSets = [
+    RuleSetItem(
+      tag: 'geosite-cn',
+      description: '中国大陆常用域名规则集 (China mainland domains)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs',
+      defaultOutbound: 'direct',
+    ),
+    RuleSetItem(
+      tag: 'geoip-cn',
+      description: '中国大陆 IP 地址段规则集 (China mainland IP CIDRs)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs',
+      defaultOutbound: 'direct',
+    ),
+    RuleSetItem(
+      tag: 'geosite-geolocation-!cn',
+      description: '非中国大陆地区域名规则集 (Non-China foreign domains)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs',
+      defaultOutbound: 'proxy',
+    ),
+    RuleSetItem(
+      tag: 'geosite-category-ads-all',
+      description: '全网广告与隐私追踪过滤规则集 (Ad & privacy tracker block)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs',
+      defaultOutbound: 'block',
+    ),
+    RuleSetItem(
+      tag: 'geosite-google',
+      description: 'Google 全球服务域名规则集 (Google services & domains)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs',
+      defaultOutbound: 'proxy',
+    ),
+    RuleSetItem(
+      tag: 'geosite-github',
+      description: 'GitHub 常用域名规则集 (GitHub services & assets)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-github.srs',
+      defaultOutbound: 'proxy',
+    ),
+    RuleSetItem(
+      tag: 'geosite-openai',
+      description: 'OpenAI / ChatGPT 访问规则集 (ChatGPT domain endpoints)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs',
+      defaultOutbound: 'proxy',
+    ),
+    RuleSetItem(
+      tag: 'geoip-private',
+      description: '私有局域网与回环地址规则集 (Private LAN addresses)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-private.srs',
+      defaultOutbound: 'direct',
+    ),
+  ];
+
+  bool _isUpdatingAll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updateRuleSet(RuleSetItem item) async {
+    setState(() {
+      item.isUpdating = true;
+      item.error = null;
+    });
+
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
+      final resp = await dio.head(item.url);
+      if (mounted) {
+        setState(() {
+          item.isUpdating = false;
+          item.lastUpdated = DateTime.now().toString().substring(0, 19);
+          item.error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          item.isUpdating = false;
+          item.error = 'Update failed: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _updateAllRuleSets() async {
+    if (_isUpdatingAll) return;
+    setState(() => _isUpdatingAll = true);
+    try {
+      await Future.wait(_ruleSets.map(_updateRuleSet));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18n.t('updateSuccess'))),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingAll = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final config = ref.watch(routingConfigProvider);
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(I18n.t('routing')),
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.alt_route, size: 18),
+                  text: I18n.t('rules'),
+                ),
+                Tab(
+                  icon: const Icon(Icons.layers_outlined, size: 18),
+                  text: I18n.t('ruleSets'),
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: I18n.t('create'),
+                onPressed: () => _addRule(context, ref),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: config.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (c) => Column(
-          children: [
-            Card(
-              margin: const EdgeInsets.all(16),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              // Tab 1: 路由规则 (Routing Rules)
+              config.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (c) => Column(
                   children: [
-                    const Text('Preset:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 8),
-                    DropdownButton<String>(
-                      value: _detectPresetName(c),
-                      items: const [
-                        DropdownMenuItem(value: 'bypass_cn', child: Text('Bypass Mainland China (绕过国内)')),
-                        DropdownMenuItem(value: 'bypass_gfw', child: Text('Bypass GFW (绕过GFW)')),
-                        DropdownMenuItem(value: 'bypass_foreign', child: Text('Bypass Foreign (绕过国外)')),
-                        DropdownMenuItem(value: 'global_proxy', child: Text('Global Proxy (全局代理)')),
-                        DropdownMenuItem(value: 'global_direct', child: Text('Global Direct (全局直连)')),
-                        DropdownMenuItem(value: 'custom', child: Text('Custom (自定义)')),
-                      ],
-                      onChanged: (val) {
-                        if (val == null) return;
-                        final notifier = ref.read(routingConfigProvider.notifier);
-                        switch (val) {
-                          case 'bypass_cn':
-                            notifier.applyPreset(getPresetBypassMainland());
-                            break;
-                          case 'bypass_gfw':
-                            notifier.applyPreset(getPresetBypassGFW());
-                            break;
-                          case 'bypass_foreign':
-                            notifier.applyPreset(getPresetBypassForeign());
-                            break;
-                          case 'global_proxy':
-                            notifier.applyPreset(getPresetGlobalProxy());
-                            break;
-                          case 'global_direct':
-                            notifier.applyPreset(getPresetGlobalDirect());
-                            break;
-                        }
-                      },
+                    Card(
+                      margin: const EdgeInsets.all(16),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            const Text('Preset:',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            DropdownButton<String>(
+                              value: _detectPresetName(c),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'bypass_cn',
+                                    child: Text('Bypass Mainland China (绕过国内)')),
+                                DropdownMenuItem(
+                                    value: 'bypass_gfw',
+                                    child: Text('Bypass GFW (绕过GFW)')),
+                                DropdownMenuItem(
+                                    value: 'bypass_foreign',
+                                    child: Text('Bypass Foreign (绕过国外)')),
+                                DropdownMenuItem(
+                                    value: 'global_proxy',
+                                    child: Text('Global Proxy (全局代理)')),
+                                DropdownMenuItem(
+                                    value: 'global_direct',
+                                    child: Text('Global Direct (全局直连)')),
+                                DropdownMenuItem(
+                                    value: 'custom',
+                                    child: Text('Custom (自定义)')),
+                              ],
+                              onChanged: (val) {
+                                if (val == null) return;
+                                final notifier =
+                                    ref.read(routingConfigProvider.notifier);
+                                switch (val) {
+                                  case 'bypass_cn':
+                                    notifier
+                                        .applyPreset(getPresetBypassMainland());
+                                    break;
+                                  case 'bypass_gfw':
+                                    notifier.applyPreset(getPresetBypassGFW());
+                                    break;
+                                  case 'bypass_foreign':
+                                    notifier
+                                        .applyPreset(getPresetBypassForeign());
+                                    break;
+                                  case 'global_proxy':
+                                    notifier
+                                        .applyPreset(getPresetGlobalProxy());
+                                    break;
+                                  case 'global_direct':
+                                    notifier
+                                        .applyPreset(getPresetGlobalDirect());
+                                    break;
+                                }
+                              },
+                            ),
+                            const Spacer(),
+                            const Text('Default:',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            DropdownButton<String>(
+                              value: c.finalOutbound,
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'direct', child: Text('Direct (直连)')),
+                                DropdownMenuItem(
+                                    value: 'proxy', child: Text('Proxy (代理)')),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  ref
+                                      .read(routingConfigProvider.notifier)
+                                      .updateFinalOutbound(val);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    const Spacer(),
-                    const Text('Default:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 8),
-                    DropdownButton<String>(
-                      value: c.finalOutbound,
-                      items: const [
-                        DropdownMenuItem(value: 'direct', child: Text('Direct (直连)')),
-                        DropdownMenuItem(value: 'proxy', child: Text('Proxy (代理)')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref.read(routingConfigProvider.notifier).updateFinalOutbound(val);
-                        }
-                      },
+                    Expanded(
+                      child: c.rules.isEmpty
+                          ? Center(child: Text(I18n.t('noRoutingRules')))
+                          : ListView.separated(
+                              itemCount: c.rules.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, i) {
+                                final r = c.rules[i];
+                                return ListTile(
+                                  leading: const Icon(Icons.route),
+                                  title: Text(r.domains.isNotEmpty
+                                      ? r.domains.join(', ')
+                                      : r.ip.isNotEmpty
+                                          ? r.ip.join(', ')
+                                          : 'Rule ${i + 1}'),
+                                  subtitle: Text(
+                                    '→ ${r.outbound}'
+                                    '${r.protocol.isNotEmpty ? '  proto=${r.protocol}' : ''}'
+                                    '${r.network.isNotEmpty ? '  net=${r.network}' : ''}',
+                                  ),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => ref
+                                        .read(routingConfigProvider.notifier)
+                                        .removeRule(i),
+                                  ),
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),
               ),
-            ),
-            Expanded(
-              child: c.rules.isEmpty
-                  ? const Center(child: Text('No routing rules. Click + to add.'))
-                  : ListView.separated(
-                      itemCount: c.rules.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final r = c.rules[i];
-                        return ListTile(
-                          leading: const Icon(Icons.route),
-                          title: Text(r.domains.isNotEmpty
-                              ? r.domains.join(', ')
-                              : r.ip.isNotEmpty
-                                  ? r.ip.join(', ')
-                                  : 'Rule ${i + 1}'),
-                          subtitle: Text(
-                            '→ ${r.outbound}'
-                            '${r.protocol.isNotEmpty ? '  proto=${r.protocol}' : ''}'
-                            '${r.network.isNotEmpty ? '  net=${r.network}' : ''}',
+
+              // Tab 2: 规则集管理 (Rule-Sets) - armwall style
+              Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      border: Border(
+                          bottom: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_sync_outlined, size: 22),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${I18n.t("ruleSets")} (${_ruleSets.length})',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const Spacer(),
+                        FilledButton.tonalIcon(
+                          icon: _isUpdatingAll
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(Icons.refresh, size: 16),
+                          label: Text(
+                            _isUpdatingAll
+                                ? I18n.t('updating')
+                                : I18n.t('updateRuleSets'),
+                            style: const TextStyle(fontSize: 12),
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () =>
-                                ref.read(routingConfigProvider.notifier).removeRule(i),
+                          onPressed:
+                              _isUpdatingAll ? null : _updateAllRuleSets,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _ruleSets.length,
+                      itemBuilder: (context, index) {
+                        final item = _ruleSets[index];
+                        final scheme = Theme.of(context).colorScheme;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(color: scheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: scheme.primaryContainer,
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        item.tag,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: scheme.onPrimaryContainer,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: scheme.surfaceContainerHighest,
+                                        borderRadius:
+                                            BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        item.format.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    IconButton(
+                                      icon: item.isUpdating
+                                          ? const SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                      strokeWidth: 2),
+                                            )
+                                          : const Icon(Icons.sync, size: 18),
+                                      tooltip: 'Update',
+                                      onPressed: item.isUpdating
+                                          ? null
+                                          : () => _updateRuleSet(item),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  item.description,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: scheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.url,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: scheme.onSurfaceVariant
+                                        .withOpacity(0.7),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (item.lastUpdated != null ||
+                                    item.error != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    item.error ??
+                                        'Last checked: ${item.lastUpdated}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: item.error != null
+                                          ? scheme.error
+                                          : Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         );
                       },
                     ),
-            ),
-          ],
-        ),
-      ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -432,7 +798,7 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
   final directIPs = <String>[];
   final proxyIPs = <String>[];
   final blockIPs = <String>[];
-  
+
   final customRules = <Map<String, dynamic>>[];
 
   for (final rule in config.rules) {
@@ -468,8 +834,6 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
     'block_ip': blockIPs.join('\n'),
     'def_outbound': config.finalOutbound,
     'custom': customRules.isEmpty ? '' : jsonEncode({'rules': customRules}),
-    // Sourced from the saved routing config rather than hardcoded, so the
-    // DNS page actually affects the generated sing-box config.
     'remote_dns': config.remoteDns,
     'remote_dns_strategy': config.remoteDnsStrategy,
     'direct_dns': config.directDns,
@@ -486,13 +850,13 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
 
 Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
   final map = <String, dynamic>{};
-  
+
   final geosite = <String>[];
   final domainFull = <String>[];
   final domainSuffix = <String>[];
   final domainKeyword = <String>[];
   final domainRegexp = <String>[];
-  
+
   for (final d in rule.domains) {
     if (d.startsWith('geosite:')) {
       geosite.add(d.substring(8));
@@ -526,7 +890,7 @@ Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
   if (domainRegexp.isNotEmpty) map['domain_regex'] = domainRegexp;
   if (geoip.isNotEmpty) map['geoip'] = geoip;
   if (ipCidr.isNotEmpty) map['ip_cidr'] = ipCidr;
-  
+
   if (rule.port.isNotEmpty) {
     _applyPorts(map, 'port', 'port_range', rule.port);
   }
@@ -542,17 +906,11 @@ Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
   if (rule.network.isNotEmpty) {
     map['network'] = [rule.network];
   }
-  
+
   map['outbound'] = rule.outbound;
   return map;
 }
 
-/// Splits port entries into sing-box's `port` (single) and `port_range`
-/// (`"1000:2000"`) fields.
-///
-/// A bare `int.parse` here crashed the page: the rule editor accepts ranges
-/// like `8000-9000`, and any non-numeric entry threw FormatException out of a
-/// build callback.
 void _applyPorts(
   Map<String, dynamic> map,
   String singleKey,
@@ -658,7 +1016,8 @@ class _RuleEditDialogState extends State<_RuleEditDialog> {
                     items: const ['any', 'tcp', 'udp']
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
-                    onChanged: (v) => setState(() => _protocol = v == 'any' ? '' : v!),
+                    onChanged: (v) =>
+                        setState(() => _protocol = v == 'any' ? '' : v!),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -672,7 +1031,8 @@ class _RuleEditDialogState extends State<_RuleEditDialog> {
                     items: const ['any', 'tcp', 'udp']
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
-                    onChanged: (v) => setState(() => _network = v == 'any' ? '' : v!),
+                    onChanged: (v) =>
+                        setState(() => _network = v == 'any' ? '' : v!),
                   ),
                 ),
               ],
@@ -688,8 +1048,16 @@ class _RuleEditDialogState extends State<_RuleEditDialog> {
         FilledButton(
           onPressed: () {
             final rule = RoutingRule(
-              domains: _domains.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
-              ip: _ip.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+              domains: _domains.text
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList(),
+              ip: _ip.text
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList(),
               outbound: _outbound.text,
               protocol: _protocol,
               network: _network,

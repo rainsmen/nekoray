@@ -69,8 +69,10 @@ func buildChain(status *BuildStatus, result *BuildResult) string {
 		needMux = false
 	}
 
-	// domain_strategy
-	outbound["domain_strategy"] = status.Routing.OutboundDomainStrategy
+	// domain_strategy (skip for wireguard which does not support it)
+	if status.Routing.OutboundDomainStrategy != "" && ent.Type != "wireguard" {
+		outbound["domain_strategy"] = status.Routing.OutboundDomainStrategy
+	}
 
 	// mux
 	if needMux {
@@ -93,12 +95,16 @@ func buildChain(status *BuildStatus, result *BuildResult) string {
 	}
 
 	// bypass lookup for first profile
-	serverAddr := getServerAddress(bean)
-	if !isIPAddress(serverAddr) {
+	serverAddr := strings.TrimSpace(getServerAddress(bean))
+	if serverAddr != "" && !isIPAddress(serverAddr) {
 		status.DomainListDNSDirect = append(status.DomainListDNSDirect, "full:"+serverAddr)
 	}
 
-	status.Outbounds = append(status.Outbounds, outbound)
+	if ent.Type == "wireguard" {
+		status.Endpoints = append(status.Endpoints, outbound)
+	} else {
+		status.Outbounds = append(status.Outbounds, outbound)
+	}
 	return tagOut
 }
 
@@ -127,6 +133,14 @@ func getServerAddress(bean interface{}) string {
 	case *nekokfmt.TrojanVLESSBean:
 		return b.ServerAddress
 	case *nekokfmt.QUICBean:
+		return b.ServerAddress
+	case *nekokfmt.NaiveBean:
+		return b.ServerAddress
+	case *nekokfmt.AnyTLSBean:
+		return b.ServerAddress
+	case *nekokfmt.SSHBean:
+		return b.ServerAddress
+	case *nekokfmt.WireGuardBean:
 		return b.ServerAddress
 	case *nekokfmt.CustomBean:
 		if b.Core == "internal" {
@@ -174,6 +188,10 @@ func makeRule(list []string, isIP bool) map[string]interface{} {
 	rule := map[string]interface{}{}
 	var ipCidr, geoip, domainKeyword, domainSubdomain, domainRegexp, domainFull, geosite []interface{}
 	for _, item := range list {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
 		if isIP {
 			if strings.HasPrefix(item, "geoip:") {
 				geoip = append(geoip, strings.TrimPrefix(item, "geoip:"))
@@ -448,8 +466,9 @@ func buildRoute(status *BuildStatus, result *BuildResult, tagProxy string) {
 	}
 
 	routeObj := map[string]interface{}{
-		"rules":                 allRules,
-		"auto_detect_interface": ds.SpmodeVPN,
+		"rules":                   allRules,
+		"auto_detect_interface":   ds.SpmodeVPN,
+		"default_domain_resolver": "dns-direct",
 	}
 	if !status.ForTest {
 		routeObj["final"] = routing.DefOutbound

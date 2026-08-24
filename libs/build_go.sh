@@ -27,7 +27,7 @@ popd
 #### Go: nekobox_core ####
 pushd go/cmd/nekobox_core
 go mod tidy
-go build -v -o "$DEST" -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
+go build -v -o "$DEST" -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego"
 popd
 
 #### Go: migrator (phase 1 data migration tool) ####

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/metadata"
 )
@@ -19,7 +20,7 @@ var instanceCtx context.Context
 var instanceCancel context.CancelFunc
 
 // CoreVersion is the nekobox_core version (printed on startup).
-const CoreVersion = "5.0.0-beta.7"
+const CoreVersion = "5.0.0-beta.8"
 
 // Debug toggles verbose logging (set via --debug flag).
 var Debug bool
@@ -47,13 +48,15 @@ func newProxyHttpClient(b *box.Box) *http.Client {
 
 // createInstance creates a sing-box instance from JSON config and starts it.
 func createInstance(configContent []byte) (*box.Box, context.CancelFunc, context.Context, error) {
+	boxCtx := include.Context(context.Background())
+
 	var options option.Options
-	err := options.UnmarshalJSONContext(context.Background(), configContent)
+	err := options.UnmarshalJSONContext(boxCtx, configContent)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(boxCtx)
 	inst, err := box.New(box.Options{
 		Context: ctx,
 		Options: options,

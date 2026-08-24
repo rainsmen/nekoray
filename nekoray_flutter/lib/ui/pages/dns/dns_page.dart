@@ -1,16 +1,34 @@
 // DNS page — edits the DNS half of the persisted routing config.
-//
-// These fields were previously stand-alone in-memory providers that nothing
-// read: `toGrpcRouting` hardcoded its DNS servers, so changing anything here
-// had no effect and did not survive a restart. They now write straight into
-// routing_default.json, which is what the config builder consumes.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n.dart';
 import '../routing/routing_page.dart';
 
 enum DnsPreset { bypassCn, global, custom }
+
+final remoteDnsPresets = <String, String>{
+  'Google DoH': 'https://dns.google/dns-query',
+  'Cloudflare DoH': 'https://1.1.1.1/dns-query',
+  'Quad9 DoH': 'https://dns.quad9.net/dns-query',
+  'OpenDNS': 'https://doh.opendns.com/dns-query',
+  'Google TCP': 'tcp://8.8.8.8',
+};
+
+final directDnsPresets = <String, String>{
+  'AliDNS DoH': 'https://223.5.5.5/dns-query',
+  'DNSPod DoH': 'https://doh.pub/dns-query',
+  '114DNS': 'udp://114.114.114.114',
+  'Local System': 'local',
+};
+
+final dnsStrategies = <String, String>{
+  'ipv4_only': 'IPv4 Only (推荐)',
+  'prefer_ipv4': 'Prefer IPv4',
+  'prefer_ipv6': 'Prefer IPv6',
+  'ipv6_only': 'IPv6 Only',
+};
 
 class DnsPage extends ConsumerWidget {
   const DnsPage({super.key});
@@ -18,23 +36,34 @@ class DnsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(routingConfigProvider);
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('DNS')),
+      appBar: AppBar(title: Text(I18n.t('dns'))),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Failed to load DNS settings: $e')),
         data: (config) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // 1. Presets Card
             Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Preset',
-                        style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      I18n.t('preset'),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
@@ -42,6 +71,12 @@ class DnsPage extends ConsumerWidget {
                           .where((p) => p != DnsPreset.custom)
                           .map((p) => ActionChip(
                                 label: Text(_presetLabel(p)),
+                                avatar: Icon(
+                                  p == DnsPreset.bypassCn
+                                      ? Icons.alt_route
+                                      : Icons.public,
+                                  size: 16,
+                                ),
                                 onPressed: () => _applyPreset(ref, p),
                               ))
                           .toList(),
@@ -50,30 +85,184 @@ class DnsPage extends ConsumerWidget {
                 ),
               ),
             ),
+
             const SizedBox(height: 16),
-            _DnsFieldCard(
-              title: 'Remote DNS',
-              value: config.remoteDns,
-              hint: 'https://dns.google/dns-query',
-              onSubmit: (v) => ref
-                  .read(routingConfigProvider.notifier)
-                  .updateDns(remoteDns: v),
-            ),
-            _DnsFieldCard(
-              title: 'Direct DNS',
-              value: config.directDns,
-              hint: 'https://223.5.5.5/dns-query',
-              onSubmit: (v) => ref
-                  .read(routingConfigProvider.notifier)
-                  .updateDns(directDns: v),
-            ),
+
+            // 2. Remote DNS Card
             Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.public, color: scheme.primary, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          I18n.t('remoteDns'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Proxied domain queries are routed to this server over the proxy tunnel',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 12),
+                    _DnsInputRow(
+                      value: config.remoteDns,
+                      hint: 'https://dns.google/dns-query',
+                      onSubmit: (v) => ref
+                          .read(routingConfigProvider.notifier)
+                          .updateDns(remoteDns: v),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: remoteDnsPresets.entries.map((e) {
+                        final isSelected = config.remoteDns == e.value;
+                        return ChoiceChip(
+                          label: Text(e.key, style: const TextStyle(fontSize: 11)),
+                          selected: isSelected,
+                          onSelected: (_) => ref
+                              .read(routingConfigProvider.notifier)
+                              .updateDns(remoteDns: e.value),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: dnsStrategies.containsKey(config.remoteDnsStrategy)
+                          ? config.remoteDnsStrategy
+                          : 'ipv4_only',
+                      decoration: const InputDecoration(
+                        labelText: 'Remote DNS Strategy',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: dnsStrategies.entries
+                          .map((e) => DropdownMenuItem(
+                                value: e.key,
+                                child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          ref
+                              .read(routingConfigProvider.notifier)
+                              .updateDnsStrategy(remote: val);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 3. Direct DNS Card
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.flash_on, color: scheme.secondary, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          I18n.t('directDns'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Domestic and bypassed domains are resolved directly for minimal latency',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 12),
+                    _DnsInputRow(
+                      value: config.directDns,
+                      hint: 'https://223.5.5.5/dns-query',
+                      onSubmit: (v) => ref
+                          .read(routingConfigProvider.notifier)
+                          .updateDns(directDns: v),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: directDnsPresets.entries.map((e) {
+                        final isSelected = config.directDns == e.value;
+                        return ChoiceChip(
+                          label: Text(e.key, style: const TextStyle(fontSize: 11)),
+                          selected: isSelected,
+                          onSelected: (_) => ref
+                              .read(routingConfigProvider.notifier)
+                              .updateDns(directDns: e.value),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: dnsStrategies.containsKey(config.directDnsStrategy)
+                          ? config.directDnsStrategy
+                          : 'ipv4_only',
+                      decoration: const InputDecoration(
+                        labelText: 'Direct DNS Strategy',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: dnsStrategies.entries
+                          .map((e) => DropdownMenuItem(
+                                value: e.key,
+                                child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          ref
+                              .read(routingConfigProvider.notifier)
+                              .updateDnsStrategy(direct: val);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 4. Advanced Switches
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                side: BorderSide(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Column(
                 children: [
                   SwitchListTile(
-                    title: const Text('DNS Routing'),
+                    title: const Text('DNS Routing (智能分流)'),
                     subtitle: const Text(
-                        'Resolve proxied domains through the remote server'),
+                        'Route DNS requests based on routing domain rules'),
                     value: config.dnsRouting,
                     onChanged: (v) => ref
                         .read(routingConfigProvider.notifier)
@@ -81,9 +270,9 @@ class DnsPage extends ConsumerWidget {
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
-                    title: const Text('FakeIP'),
+                    title: Text(I18n.t('fakeip')),
                     subtitle: const Text(
-                        'Answer with synthetic addresses; usually paired with TUN mode'),
+                        'Respond with synthetic IP pool (198.18.0.0/15) for TUN mode'),
                     value: config.fakeIp,
                     onChanged: (v) => ref
                         .read(routingConfigProvider.notifier)
@@ -101,11 +290,11 @@ class DnsPage extends ConsumerWidget {
   String _presetLabel(DnsPreset p) {
     switch (p) {
       case DnsPreset.bypassCn:
-        return 'Bypass CN';
+        return I18n.t('bypassCn');
       case DnsPreset.global:
-        return 'Global';
+        return I18n.t('global');
       case DnsPreset.custom:
-        return 'Custom';
+        return I18n.t('custom');
     }
   }
 
@@ -132,67 +321,66 @@ class DnsPage extends ConsumerWidget {
   }
 }
 
-class _DnsFieldCard extends StatefulWidget {
-  final String title;
+class _DnsInputRow extends StatefulWidget {
   final String value;
   final String hint;
   final void Function(String) onSubmit;
 
-  const _DnsFieldCard({
-    required this.title,
+  const _DnsInputRow({
     required this.value,
     required this.hint,
     required this.onSubmit,
   });
 
   @override
-  State<_DnsFieldCard> createState() => _DnsFieldCardState();
+  State<_DnsInputRow> createState() => _DnsInputRowState();
 }
 
-class _DnsFieldCardState extends State<_DnsFieldCard> {
-  late final TextEditingController _ctrl =
-      TextEditingController(text: widget.value);
+class _DnsInputRowState extends State<_DnsInputRow> {
+  late TextEditingController _controller;
 
   @override
-  void didUpdateWidget(covariant _DnsFieldCard old) {
-    super.didUpdateWidget(old);
-    // Reflect external changes (a preset being applied) without clobbering
-    // whatever the user is currently typing.
-    if (old.value != widget.value && _ctrl.text == old.value) {
-      _ctrl.text = widget.value;
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DnsInputRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _controller.text = widget.value;
     }
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _ctrl,
-              decoration: InputDecoration(
-                hintText: widget.hint,
-                border: const OutlineInputBorder(),
-              ),
-              // Persist on commit rather than on every keystroke, so the file
-              // is not rewritten once per typed character.
-              onSubmitted: widget.onSubmit,
-              onTapOutside: (_) => widget.onSubmit(_ctrl.text),
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _controller,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              isDense: true,
+              border: const OutlineInputBorder(),
             ),
-          ],
+            onSubmitted: (v) => widget.onSubmit(v.trim()),
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          icon: const Icon(Icons.check, size: 18),
+          tooltip: I18n.t('save'),
+          onPressed: () => widget.onSubmit(_controller.text.trim()),
+        ),
+      ],
     );
   }
 }

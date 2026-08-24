@@ -14,6 +14,7 @@ import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
 import '../../pages/connections/connections_page.dart';
 import '../../pages/dns/dns_page.dart';
+import '../../pages/logs/logs_page.dart';
 import '../../pages/profile/profile_edit_dialog.dart';
 import '../../pages/routing/routing_page.dart';
 import '../../pages/settings/settings_page.dart';
@@ -21,7 +22,7 @@ import '../../widgets/proxy_card.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/status_bar.dart';
 
-enum HomePageTab { profiles, routing, dns, connections, settings }
+enum HomePageTab { profiles, routing, dns, connections, logs, settings }
 
 final homeTabProvider = StateProvider<HomePageTab>((ref) => HomePageTab.profiles);
 
@@ -93,6 +94,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             NavigationDestination(icon: const Icon(Icons.route_outlined), label: I18n.t('routing')),
             NavigationDestination(icon: const Icon(Icons.dns_outlined), label: I18n.t('dns')),
             NavigationDestination(icon: const Icon(Icons.device_hub_outlined), label: I18n.t('connections')),
+            NavigationDestination(icon: const Icon(Icons.article_outlined), label: I18n.t('logs')),
             NavigationDestination(icon: const Icon(Icons.settings_outlined), label: I18n.t('settings')),
           ],
         ),
@@ -121,6 +123,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                   icon: const Icon(Icons.device_hub_outlined),
                   label: Text(I18n.t('connections'))),
               NavigationRailDestination(
+                  icon: const Icon(Icons.article_outlined), label: Text(I18n.t('logs'))),
+              NavigationRailDestination(
                   icon: const Icon(Icons.settings_outlined), label: Text(I18n.t('settings'))),
             ],
           ),
@@ -142,6 +146,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         return const DnsPage();
       case HomePageTab.connections:
         return const ConnectionsPage();
+      case HomePageTab.logs:
+        return const LogsPage();
       case HomePageTab.settings:
         return const SettingsPage();
     }

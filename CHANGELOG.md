@@ -1,5 +1,35 @@
 # Changelog
 
+## v5.0.0-beta.8 — Protocol Context Registry Fix, Logs Page, Speed Test & Rule-Sets (2026-08-24)
+
+### New Features & Enhancements
+- **Live Logs Viewer Page (日志界面)**:
+  - Added dedicated Logs page in Flutter UI (`LogsPage`) with NavigationRail / NavigationBar integration.
+  - Log level filter chips (`All`, `Info`, `Warn`, `Error`, `Debug`), search keyword filter, auto-scroll to bottom, one-click copy, and log clear.
+  - Monospace font and color-coded level badges for clear debugging.
+- **Website Connectivity & Speed Test Dashboard (网站测速与连通性)**:
+  - Implemented armwall-inspired website speed test matrix on the Connections page.
+  - Tested across Global / Proxy sites (Google, YouTube, GitHub, Cloudflare, ChatGPT, Telegram, Wikipedia) and Domestic / Direct sites (Baidu, Bilibili, Taobao, QQ/Tencent).
+  - One-click batch testing, individual site retests, latency measurement (ms), and HTTP status badge feedback.
+- **Enhanced Routing & Rule-Sets Management (分流与规则集)**:
+  - Added tabbed layout for Routing: Routing Rules and Rule-Sets (`geosite-cn`, `geoip-cn`, `geosite-geolocation-!cn`, `geosite-category-ads-all`, `geosite-google`, `geosite-github`, `geosite-openai`, `geoip-private`).
+  - Remote rule-set auto and manual one-click update support with download status and timestamp tracking.
+- **Enhanced DNS Page**:
+  - Added quick server presets for Remote DNS (Google DoH, Cloudflare DoH, Quad9 DoH, OpenDNS) and Direct DNS (AliDNS DoH, DNSPod DoH, 114DNS, Local).
+  - DNS domain strategy selection (`ipv4_only`, `prefer_ipv4`, `prefer_ipv6`, `ipv6_only`).
+
+### Critical Bug Fixes & Risk Mitigations
+- **Resolved sing-box Registry Startup Error (`missing DNS transport options registry in context`)**:
+  - Injected `include.Context(context.Background())` into `createInstance` in `core_box.go`, ensuring all DNS transports, inbounds, outbounds, endpoints, and services are registered in the sing-box context for all 14 protocols.
+- **Full Protocol Safety & Compatibility Fixes**:
+  - `build_go.sh` & `build_android.sh`: Added `with_naive_outbound` and `with_purego` build tags to compile sing-box NaiveProxy driver and pure-Go fallback cleanly.
+  - Standardized Hysteria2 ALPN: `coreTls["alpn"] = []string{"h3"}`.
+  - Upgraded WireGuard to sing-box 1.13 Endpoint model with default `allowed_ips: ["0.0.0.0/0", "::/0"]`.
+  - Fixed `getServerAddress` domain extraction for Naive, AnyTLS, SSH, WireGuard, Socks, and Shadowsocks beans preventing empty DNS domain rules.
+  - Added default domain resolver `default_domain_resolver: "dns-direct"` to sing-box route object.
+- **Comprehensive Regression Test Suite**:
+  - Added `go/cmd/nekobox_core/protocols_test.go` verifying end-to-end configuration creation and sing-box instantiation across all 14 proxy protocols.
+
 ## v5.0.0-beta.7 — Core Startup & Process Parameter Fix (2026-08-24)
 
 ### Bug Fixes

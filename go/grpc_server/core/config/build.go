@@ -49,6 +49,7 @@ type BuildStatus struct {
 	GlobalProfiles      map[int]bool
 	Outbounds           []map[string]interface{}
 	Inbounds            []map[string]interface{}
+	Endpoints           []map[string]interface{}
 	RoutingRules        []map[string]interface{}
 	IgnoreConnTag       []string
 	DomainListDNSRemote []string
@@ -214,6 +215,9 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 
 	result.CoreConfig["inbounds"] = status.Inbounds
 	result.CoreConfig["outbounds"] = status.Outbounds
+	if len(status.Endpoints) > 0 {
+		result.CoreConfig["endpoints"] = status.Endpoints
+	}
 
 	// user rules
 	if !status.ForTest {

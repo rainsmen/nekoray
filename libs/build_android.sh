@@ -80,7 +80,7 @@ build_abi() {
   go build -buildmode=c-shared \
     -o "$DEST/$ABI/libnekobox.so" \
     -trimpath -ldflags "-w -s" \
-    -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls" \
+    -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego" \
     .
 
   # Also copy the generated header for native bindings
