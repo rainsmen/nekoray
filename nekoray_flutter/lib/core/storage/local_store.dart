@@ -257,6 +257,111 @@ class LocalStore {
     await _writeAtomic(f, _encoder.convert(settings));
   }
 
+  // --- Backup & Restore --------------------------------------------------
+
+  /// Creates a unified backup map containing all profiles, groups, routing, and settings.
+  static Future<Map<String, dynamic>> exportBackup() async {
+    final profiles = await loadProfiles();
+    final groups = await loadGroups();
+    final routing = await loadRouting('default') ?? {};
+    final settings = await loadSettings();
+    return {
+      'app': 'nekoray',
+      'version': '5.0.0',
+      'exported_at': DateTime.now().toIso8601String(),
+      'profiles': profiles,
+      'groups': groups,
+      'routing': routing,
+      'settings': settings,
+    };
+  }
+
+  /// Restores a unified backup map.
+  static Future<void> importBackup(
+    Map<String, dynamic> backup, {
+    bool clearExisting = true,
+  }) async {
+    if (clearExisting) {
+      final profiles = await loadProfiles();
+      for (final p in profiles) {
+        if (p['id'] is int) await deleteProfile(p['id']);
+      }
+      final groups = await loadGroups();
+      for (final g in groups) {
+        if (g['id'] is int) await deleteGroup(g['id']);
+      }
+    }
+
+    final rawProfiles = backup['profiles'];
+    if (rawProfiles is List) {
+      for (final p in rawProfiles) {
+        if (p is Map<String, dynamic> && p['id'] is int) {
+          await saveProfile(p);
+        }
+      }
+    }
+
+    final rawGroups = backup['groups'];
+    if (rawGroups is List) {
+      for (final g in rawGroups) {
+        if (g is Map<String, dynamic> && g['id'] is int) {
+          await saveGroup(g);
+        }
+      }
+    }
+
+    final routing = backup['routing'];
+    if (routing is Map<String, dynamic> && routing.isNotEmpty) {
+      await saveRouting('default', routing);
+    }
+
+    final settings = backup['settings'];
+    if (settings is Map<String, dynamic> && settings.isNotEmpty) {
+      await saveSettings(settings);
+    }
+  }
+
+  /// Creates a local timestamped snapshot in <appDir>/backups/
+  static Future<String> createLocalBackup() async {
+    final data = await exportBackup();
+    final dir = await _subDir('backups');
+    final now = DateTime.now();
+    final timestamp =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}-${now.second.toString().padLeft(2, '0')}';
+    final filename = 'backup_$timestamp.json';
+    final file = File('${dir.path}/$filename');
+    await _writeAtomic(file, _encoder.convert(data));
+    return filename;
+  }
+
+  /// Lists all local backup files sorted by creation time descending.
+  static Future<List<File>> listLocalBackups() async {
+    final dir = await _subDir('backups');
+    final list = <File>[];
+    if (await dir.exists()) {
+      await for (final f in dir.list()) {
+        if (f is File && f.path.endsWith('.json')) {
+          list.add(f);
+        }
+      }
+    }
+    list.sort((a, b) => b.path.compareTo(a.path));
+    return list;
+  }
+
+  /// Restores a specific local backup file.
+  static Future<void> restoreLocalBackup(File file) async {
+    if (!await file.exists()) {
+      throw FileSystemException('Backup file not found', file.path);
+    }
+    final content = await file.readAsString();
+    final json = jsonDecode(content);
+    if (json is! Map<String, dynamic>) {
+      throw const FormatException('Invalid backup format: root must be a JSON object');
+    }
+    await importBackup(json, clearExisting: true);
+  }
+
   // --- ID allocation ----------------------------------------------------
 
   /// Returns [count] ids that do not collide with anything already on disk.

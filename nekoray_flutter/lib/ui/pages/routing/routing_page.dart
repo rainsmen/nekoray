@@ -1,3 +1,7 @@
+// Routing page — Karing & armwall inspired rule management & rule-set engine.
+// Each rule and rule-set can have its outbound action (Direct / Proxy / Block)
+// directly selected, toggled, and customized.
+
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +34,7 @@ class RoutingConfig {
 
   RoutingConfig({
     List<RoutingRule>? rules,
-    this.finalOutbound = 'direct',
+    this.finalOutbound = 'proxy',
     this.remoteDns = 'https://dns.google/dns-query',
     this.directDns = 'https://223.5.5.5/dns-query',
     this.remoteDnsStrategy = 'ipv4_only',
@@ -50,7 +54,7 @@ class RoutingConfig {
               .map(RoutingRule.fromJson)
               .toList() ??
           <RoutingRule>[],
-      finalOutbound: (j['finalOutbound'] as String?) ?? 'direct',
+      finalOutbound: (j['finalOutbound'] as String?) ?? 'proxy',
       remoteDns: (j['remote_dns'] as String?) ?? 'https://dns.google/dns-query',
       directDns: (j['direct_dns'] as String?) ?? 'https://223.5.5.5/dns-query',
       remoteDnsStrategy: (j['remote_dns_strategy'] as String?) ?? 'ipv4_only',
@@ -106,23 +110,37 @@ class RoutingConfig {
       );
 }
 
+/// Standard Karing-style default presets
 RoutingConfig getPresetBypassMainland() {
   return RoutingConfig(
     finalOutbound: 'proxy',
     rules: [
       RoutingRule(
+        name: '全网广告与隐私追踪过滤',
         domains: ['geosite:category-ads-all'],
         outbound: 'block',
       ),
       RoutingRule(
+        name: '私有局域网与回环地址',
         domains: ['geosite:private'],
         ip: ['geoip:private'],
         outbound: 'direct',
       ),
       RoutingRule(
+        name: 'Apple 苹果服务',
+        domains: ['geosite:apple'],
+        outbound: 'direct',
+      ),
+      RoutingRule(
+        name: '中国大陆常用域名与IP',
         domains: ['geosite:cn'],
         ip: ['geoip:cn'],
         outbound: 'direct',
+      ),
+      RoutingRule(
+        name: 'AI 智能服务 (OpenAI/Claude)',
+        domains: ['geosite:openai', 'geosite:anthropic'],
+        outbound: 'proxy',
       ),
     ],
   );
@@ -133,33 +151,19 @@ RoutingConfig getPresetBypassGFW() {
     finalOutbound: 'direct',
     rules: [
       RoutingRule(
+        name: '全网广告与隐私追踪过滤',
         domains: ['geosite:category-ads-all'],
         outbound: 'block',
       ),
       RoutingRule(
+        name: '私有局域网与回环地址',
         domains: ['geosite:private'],
         ip: ['geoip:private'],
         outbound: 'direct',
       ),
       RoutingRule(
+        name: 'GFW 代理域名列表',
         domains: ['geosite:gfw'],
-        outbound: 'proxy',
-      ),
-    ],
-  );
-}
-
-RoutingConfig getPresetBypassForeign() {
-  return RoutingConfig(
-    finalOutbound: 'direct',
-    rules: [
-      RoutingRule(
-        domains: ['geosite:category-ads-all'],
-        outbound: 'block',
-      ),
-      RoutingRule(
-        domains: ['geosite:cn'],
-        ip: ['geoip:cn'],
         outbound: 'proxy',
       ),
     ],
@@ -171,8 +175,15 @@ RoutingConfig getPresetGlobalProxy() {
     finalOutbound: 'proxy',
     rules: [
       RoutingRule(
+        name: '全网广告与隐私追踪过滤',
         domains: ['geosite:category-ads-all'],
         outbound: 'block',
+      ),
+      RoutingRule(
+        name: '私有局域网与回环地址',
+        domains: ['geosite:private'],
+        ip: ['geoip:private'],
+        outbound: 'direct',
       ),
     ],
   );
@@ -183,6 +194,7 @@ RoutingConfig getPresetGlobalDirect() {
     finalOutbound: 'direct',
     rules: [
       RoutingRule(
+        name: '全网广告与隐私追踪过滤',
         domains: ['geosite:category-ads-all'],
         outbound: 'block',
       ),
@@ -192,24 +204,17 @@ RoutingConfig getPresetGlobalDirect() {
 
 String _detectPresetName(RoutingConfig config) {
   if (config.finalOutbound == 'proxy' &&
-      config.rules.length == 3 &&
-      config.rules[2].domains.contains('geosite:cn')) {
+      config.rules.any((r) => r.domains.contains('geosite:cn'))) {
     return 'bypass_cn';
   }
   if (config.finalOutbound == 'direct' &&
-      config.rules.length == 3 &&
-      config.rules[2].domains.contains('geosite:gfw')) {
+      config.rules.any((r) => r.domains.contains('geosite:gfw'))) {
     return 'bypass_gfw';
   }
-  if (config.finalOutbound == 'direct' &&
-      config.rules.length == 2 &&
-      config.rules[1].domains.contains('geosite:cn')) {
-    return 'bypass_foreign';
-  }
-  if (config.finalOutbound == 'proxy' && config.rules.length == 1) {
+  if (config.finalOutbound == 'proxy' && config.rules.length <= 2) {
     return 'global_proxy';
   }
-  if (config.finalOutbound == 'direct' && config.rules.length == 1) {
+  if (config.finalOutbound == 'direct' && config.rules.length <= 2) {
     return 'global_direct';
   }
   return 'custom';
@@ -244,6 +249,42 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
     state = AsyncValue.data(next);
   }
 
+  Future<void> updateRule(int index, RoutingRule rule) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+    if (index >= 0 && index < rules.length) {
+      rules[index] = rule;
+      final next = c.copyWith(rules: rules);
+      await LocalStore.saveRouting('default', next.toJson());
+      state = AsyncValue.data(next);
+    }
+  }
+
+  Future<void> updateRuleOutbound(int index, String outbound) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+    if (index >= 0 && index < rules.length) {
+      rules[index] = rules[index].copyWith(outbound: outbound);
+      final next = c.copyWith(rules: rules);
+      await LocalStore.saveRouting('default', next.toJson());
+      state = AsyncValue.data(next);
+    }
+  }
+
+  Future<void> toggleRuleEnabled(int index, bool enabled) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+    if (index >= 0 && index < rules.length) {
+      rules[index] = rules[index].copyWith(enabled: enabled);
+      final next = c.copyWith(rules: rules);
+      await LocalStore.saveRouting('default', next.toJson());
+      state = AsyncValue.data(next);
+    }
+  }
+
   Future<void> removeRule(int index) async {
     final c = state.valueOrNull;
     if (c == null) return;
@@ -254,6 +295,49 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
       await LocalStore.saveRouting('default', next.toJson());
       state = AsyncValue.data(next);
     }
+  }
+
+  Future<void> setRuleForTag({
+    required String tag,
+    required String name,
+    required String outbound, // 'direct' | 'proxy' | 'block' | 'disable'
+  }) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+
+    final isDomain = tag.startsWith('geosite-') || tag.startsWith('geosite:');
+    final isIP = tag.startsWith('geoip-') || tag.startsWith('geoip:');
+    final cleanTag = tag.replaceFirst('geosite-', 'geosite:').replaceFirst('geoip-', 'geoip:');
+
+    // Find if rule already exists
+    final existingIdx = rules.indexWhere((r) =>
+        (isDomain && r.domains.contains(cleanTag)) || (isIP && r.ip.contains(cleanTag)));
+
+    if (outbound == 'disable') {
+      if (existingIdx >= 0) {
+        rules.removeAt(existingIdx);
+      }
+    } else {
+      if (existingIdx >= 0) {
+        rules[existingIdx] = rules[existingIdx].copyWith(
+          outbound: outbound,
+          enabled: true,
+        );
+      } else {
+        rules.add(RoutingRule(
+          name: name,
+          domains: isDomain ? [cleanTag] : [],
+          ip: isIP ? [cleanTag] : [],
+          outbound: outbound,
+          enabled: true,
+        ));
+      }
+    }
+
+    final next = c.copyWith(rules: rules);
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
   }
 
   Future<void> applyPreset(RoutingConfig preset) async {
@@ -308,8 +392,7 @@ class RuleSetItem {
   final String tag;
   final String description;
   final String url;
-  final String format; // 'binary' | 'source'
-  final String defaultOutbound;
+  final IconData icon;
   bool isUpdating;
   String? lastUpdated;
   String? error;
@@ -318,8 +401,7 @@ class RuleSetItem {
     required this.tag,
     required this.description,
     required this.url,
-    this.format = 'binary',
-    this.defaultOutbound = 'direct',
+    required this.icon,
     this.isUpdating = false,
     this.lastUpdated,
     this.error,
@@ -340,59 +422,80 @@ class _RoutingPageState extends State<RoutingPage>
   final List<RuleSetItem> _ruleSets = [
     RuleSetItem(
       tag: 'geosite-cn',
-      description: '中国大陆常用域名规则集 (China mainland domains)',
+      description: '中国大陆常用域名 (China mainland domains)',
       url:
           'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs',
-      defaultOutbound: 'direct',
+      icon: Icons.language,
     ),
     RuleSetItem(
       tag: 'geoip-cn',
-      description: '中国大陆 IP 地址段规则集 (China mainland IP CIDRs)',
+      description: '中国大陆 IP 地址段 (China mainland IP CIDRs)',
       url:
           'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs',
-      defaultOutbound: 'direct',
+      icon: Icons.public,
     ),
     RuleSetItem(
-      tag: 'geosite-geolocation-!cn',
-      description: '非中国大陆地区域名规则集 (Non-China foreign domains)',
+      tag: 'geosite-apple',
+      description: 'Apple 苹果服务 (App Store / iCloud / Apple ID)',
       url:
-          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs',
-      defaultOutbound: 'proxy',
-    ),
-    RuleSetItem(
-      tag: 'geosite-category-ads-all',
-      description: '全网广告与隐私追踪过滤规则集 (Ad & privacy tracker block)',
-      url:
-          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs',
-      defaultOutbound: 'block',
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-apple.srs',
+      icon: Icons.apple,
     ),
     RuleSetItem(
       tag: 'geosite-google',
-      description: 'Google 全球服务域名规则集 (Google services & domains)',
+      description: 'Google 全球服务 (Search / YouTube / Gmail / Play)',
       url:
           'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs',
-      defaultOutbound: 'proxy',
-    ),
-    RuleSetItem(
-      tag: 'geosite-github',
-      description: 'GitHub 常用域名规则集 (GitHub services & assets)',
-      url:
-          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-github.srs',
-      defaultOutbound: 'proxy',
+      icon: Icons.travel_explore,
     ),
     RuleSetItem(
       tag: 'geosite-openai',
-      description: 'OpenAI / ChatGPT 访问规则集 (ChatGPT domain endpoints)',
+      description: 'OpenAI / ChatGPT / Sora 智能服务',
       url:
           'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs',
-      defaultOutbound: 'proxy',
+      icon: Icons.smart_toy_outlined,
+    ),
+    RuleSetItem(
+      tag: 'geosite-anthropic',
+      description: 'Claude / Anthropic AI 模型服务',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-anthropic.srs',
+      icon: Icons.psychology_outlined,
+    ),
+    RuleSetItem(
+      tag: 'geosite-category-ads-all',
+      description: '全网广告与隐私追踪过滤 (AdBlock & Trackers)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs',
+      icon: Icons.shield_outlined,
+    ),
+    RuleSetItem(
+      tag: 'geosite-telegram',
+      description: 'Telegram 社交网络 (Telegram CDN & Endpoints)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-telegram.srs',
+      icon: Icons.send_outlined,
+    ),
+    RuleSetItem(
+      tag: 'geosite-github',
+      description: 'GitHub 常用域名与静态资产 (GitHub Services)',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-github.srs',
+      icon: Icons.code,
+    ),
+    RuleSetItem(
+      tag: 'geosite-netflix',
+      description: 'Netflix 奈飞全球流媒体服务',
+      url:
+          'https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs',
+      icon: Icons.movie_outlined,
     ),
     RuleSetItem(
       tag: 'geoip-private',
-      description: '私有局域网与回环地址规则集 (Private LAN addresses)',
+      description: '私有局域网与回环地址 (Private LAN & Loopback)',
       url:
           'https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-private.srs',
-      defaultOutbound: 'direct',
+      icon: Icons.home_outlined,
     ),
   ];
 
@@ -456,11 +559,44 @@ class _RoutingPageState extends State<RoutingPage>
     }
   }
 
+  void _openEditRuleDialog(BuildContext context, WidgetRef ref,
+      {RoutingRule? existingRule, int? index}) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _EditRuleDialog(
+        existingRule: existingRule,
+        onSave: (rule) {
+          if (index != null && index >= 0) {
+            ref.read(routingConfigProvider.notifier).updateRule(index, rule);
+          } else {
+            ref.read(routingConfigProvider.notifier).addRule(rule);
+          }
+        },
+      ),
+    );
+  }
+
+  String _getRuleStatusForTag(RoutingConfig config, String tag) {
+    final cleanTag =
+        tag.replaceFirst('geosite-', 'geosite:').replaceFirst('geoip-', 'geoip:');
+    final match = config.rules.firstWhere(
+      (r) =>
+          r.enabled &&
+          (r.domains.contains(cleanTag) || r.ip.contains(cleanTag)),
+      orElse: () => RoutingRule(outbound: 'disabled', enabled: false),
+    );
+    if (!match.enabled || match.outbound == 'disabled') return 'disable';
+    return match.outbound;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
+
     return Consumer(
       builder: (context, ref, _) {
-        final config = ref.watch(routingConfigProvider);
+        final configAsync = ref.watch(routingConfigProvider);
         return Scaffold(
           appBar: AppBar(
             title: Text(I18n.t('routing')),
@@ -479,33 +615,62 @@ class _RoutingPageState extends State<RoutingPage>
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.add),
-                tooltip: I18n.t('create'),
-                onPressed: () => _addRule(context, ref),
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: I18n.t('addCustomRule'),
+                onPressed: () => _openEditRuleDialog(context, ref),
               ),
             ],
           ),
           body: TabBarView(
             controller: _tabController,
             children: [
-              // Tab 1: 路由规则 (Routing Rules)
-              config.when(
+              // Tab 1: 路由规则 (Routing Rules - Karing style)
+              configAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Error: $e')),
-                data: (c) => Column(
+                data: (c) => ListView(
+                  padding: const EdgeInsets.all(16),
                   children: [
+                    // Top Preset & Default Outbound Card
                     Card(
-                      margin: const EdgeInsets.all(16),
+                      elevation: isDark ? 0 : 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        child: Row(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Preset:',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(width: 8),
-                            DropdownButton<String>(
+                            Row(
+                              children: [
+                                const Icon(Icons.tune, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  I18n.t('rulePresets'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
                               value: _detectPresetName(c),
+                              decoration: InputDecoration(
+                                labelText: I18n.t('preset'),
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                              ),
                               items: const [
                                 DropdownMenuItem(
                                     value: 'bypass_cn',
@@ -514,9 +679,6 @@ class _RoutingPageState extends State<RoutingPage>
                                     value: 'bypass_gfw',
                                     child: Text('Bypass GFW (绕过GFW)')),
                                 DropdownMenuItem(
-                                    value: 'bypass_foreign',
-                                    child: Text('Bypass Foreign (绕过国外)')),
-                                DropdownMenuItem(
                                     value: 'global_proxy',
                                     child: Text('Global Proxy (全局代理)')),
                                 DropdownMenuItem(
@@ -524,7 +686,7 @@ class _RoutingPageState extends State<RoutingPage>
                                     child: Text('Global Direct (全局直连)')),
                                 DropdownMenuItem(
                                     value: 'custom',
-                                    child: Text('Custom (自定义)')),
+                                    child: Text('Custom (自定义规则)')),
                               ],
                               onChanged: (val) {
                                 if (val == null) return;
@@ -532,245 +694,476 @@ class _RoutingPageState extends State<RoutingPage>
                                     ref.read(routingConfigProvider.notifier);
                                 switch (val) {
                                   case 'bypass_cn':
-                                    notifier
-                                        .applyPreset(getPresetBypassMainland());
+                                    notifier.applyPreset(getPresetBypassMainland());
                                     break;
                                   case 'bypass_gfw':
                                     notifier.applyPreset(getPresetBypassGFW());
                                     break;
-                                  case 'bypass_foreign':
-                                    notifier
-                                        .applyPreset(getPresetBypassForeign());
-                                    break;
                                   case 'global_proxy':
-                                    notifier
-                                        .applyPreset(getPresetGlobalProxy());
+                                    notifier.applyPreset(getPresetGlobalProxy());
                                     break;
                                   case 'global_direct':
-                                    notifier
-                                        .applyPreset(getPresetGlobalDirect());
+                                    notifier.applyPreset(getPresetGlobalDirect());
                                     break;
                                 }
                               },
                             ),
-                            const Spacer(),
-                            const Text('Default:',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(width: 8),
-                            DropdownButton<String>(
-                              value: c.finalOutbound,
-                              items: const [
-                                DropdownMenuItem(
-                                    value: 'direct', child: Text('Direct (直连)')),
-                                DropdownMenuItem(
-                                    value: 'proxy', child: Text('Proxy (代理)')),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  ref
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Text(
+                                  I18n.t('finalOutbound') + ':',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    color: scheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                _buildOutboundChip(
+                                  label: I18n.t('proxy'),
+                                  isSelected: c.finalOutbound == 'proxy',
+                                  color: scheme.primary,
+                                  onTap: () => ref
                                       .read(routingConfigProvider.notifier)
-                                      .updateFinalOutbound(val);
-                                }
-                              },
+                                      .updateFinalOutbound('proxy'),
+                                ),
+                                const SizedBox(width: 8),
+                                _buildOutboundChip(
+                                  label: I18n.t('direct'),
+                                  isSelected: c.finalOutbound == 'direct',
+                                  color: Colors.green.shade700,
+                                  onTap: () => ref
+                                      .read(routingConfigProvider.notifier)
+                                      .updateFinalOutbound('direct'),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
                     ),
-                    Expanded(
-                      child: c.rules.isEmpty
-                          ? Center(child: Text(I18n.t('noRoutingRules')))
-                          : ListView.separated(
-                              itemCount: c.rules.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, i) {
-                                final r = c.rules[i];
-                                return ListTile(
-                                  leading: const Icon(Icons.route),
-                                  title: Text(r.domains.isNotEmpty
-                                      ? r.domains.join(', ')
-                                      : r.ip.isNotEmpty
-                                          ? r.ip.join(', ')
-                                          : 'Rule ${i + 1}'),
-                                  subtitle: Text(
-                                    '→ ${r.outbound}'
-                                    '${r.protocol.isNotEmpty ? '  proto=${r.protocol}' : ''}'
-                                    '${r.network.isNotEmpty ? '  net=${r.network}' : ''}',
-                                  ),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete_outline),
-                                    onPressed: () => ref
-                                        .read(routingConfigProvider.notifier)
-                                        .removeRule(i),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
 
-              // Tab 2: 规则集管理 (Rule-Sets) - armwall style
-              Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      border: Border(
-                          bottom: BorderSide(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant)),
-                    ),
-                    child: Row(
+                    const SizedBox(height: 16),
+
+                    // Rules List Title
+                    Row(
                       children: [
-                        const Icon(Icons.cloud_sync_outlined, size: 22),
-                        const SizedBox(width: 8),
                         Text(
-                          '${I18n.t("ruleSets")} (${_ruleSets.length})',
+                          '${I18n.t("rules")} (${c.rules.length})',
                           style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 15),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const Spacer(),
-                        FilledButton.tonalIcon(
-                          icon: _isUpdatingAll
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
-                                )
-                              : const Icon(Icons.refresh, size: 16),
-                          label: Text(
-                            _isUpdatingAll
-                                ? I18n.t('updating')
-                                : I18n.t('updateRuleSets'),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          onPressed:
-                              _isUpdatingAll ? null : _updateAllRuleSets,
+                        TextButton.icon(
+                          icon: const Icon(Icons.add, size: 16),
+                          label: Text(I18n.t('addCustomRule')),
+                          onPressed: () => _openEditRuleDialog(context, ref),
                         ),
                       ],
                     ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _ruleSets.length,
-                      itemBuilder: (context, index) {
-                        final item = _ruleSets[index];
-                        final scheme = Theme.of(context).colorScheme;
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            side: BorderSide(color: scheme.outlineVariant),
-                            borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 8),
+
+                    if (c.rules.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            I18n.t('noRoutingRules'),
+                            style: TextStyle(color: scheme.onSurfaceVariant),
                           ),
+                        ),
+                      )
+                    else
+                      ...List.generate(c.rules.length, (i) {
+                        final r = c.rules[i];
+                        final ruleTitle = r.name.isNotEmpty
+                            ? r.name
+                            : (r.domains.isNotEmpty
+                                ? r.domains.join(', ')
+                                : (r.ip.isNotEmpty
+                                    ? r.ip.join(', ')
+                                    : 'Rule #${i + 1}'));
+
+                        final ruleSubtitle = [
+                          if (r.domains.isNotEmpty && r.name.isNotEmpty)
+                            r.domains.join(', '),
+                          if (r.ip.isNotEmpty && r.name.isNotEmpty)
+                            r.ip.join(', '),
+                          if (r.protocol.isNotEmpty) 'proto: ${r.protocol}',
+                          if (r.network.isNotEmpty) 'net: ${r.network}',
+                        ].join(' · ');
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          elevation: isDark ? 0 : 0.5,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.08)
+                                  : const Color(0xFFCBD5E1),
+                            ),
+                          ),
+                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
                           child: Padding(
-                            padding: const EdgeInsets.all(14),
+                            padding: const EdgeInsets.all(12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: scheme.primaryContainer,
-                                        borderRadius:
-                                            BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        item.tag,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: scheme.onPrimaryContainer,
-                                        ),
-                                      ),
+                                    Icon(
+                                      _getRuleIcon(r),
+                                      size: 20,
+                                      color: r.enabled
+                                          ? scheme.primary
+                                          : Colors.grey,
                                     ),
                                     const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: scheme.surfaceContainerHighest,
-                                        borderRadius:
-                                            BorderRadius.circular(4),
-                                      ),
+                                    Expanded(
                                       child: Text(
-                                        item.format.toUpperCase(),
+                                        ruleTitle,
                                         style: TextStyle(
-                                          fontSize: 10,
-                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: r.enabled
+                                              ? scheme.onSurface
+                                              : Colors.grey,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const Spacer(),
-                                    IconButton(
-                                      icon: item.isUpdating
-                                          ? const SizedBox(
-                                              width: 14,
-                                              height: 14,
-                                              child:
-                                                  CircularProgressIndicator(
-                                                      strokeWidth: 2),
-                                            )
-                                          : const Icon(Icons.sync, size: 18),
-                                      tooltip: 'Update',
-                                      onPressed: item.isUpdating
-                                          ? null
-                                          : () => _updateRuleSet(item),
+                                    // Enabled Switch
+                                    Switch(
+                                      value: r.enabled,
+                                      onChanged: (val) => ref
+                                          .read(routingConfigProvider.notifier)
+                                          .toggleRuleEnabled(i, val),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  item.description,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: scheme.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.url,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: scheme.onSurfaceVariant
-                                        .withOpacity(0.7),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (item.lastUpdated != null ||
-                                    item.error != null) ...[
-                                  const SizedBox(height: 6),
+                                if (ruleSubtitle.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
                                   Text(
-                                    item.error ??
-                                        'Last checked: ${item.lastUpdated}',
+                                    ruleSubtitle,
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: item.error != null
-                                          ? scheme.error
-                                          : Colors.green,
+                                      color: scheme.onSurfaceVariant,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
+                                const SizedBox(height: 10),
+                                const Divider(height: 1),
+                                const SizedBox(height: 10),
+                                // Outbound action selector & action buttons
+                                Row(
+                                  children: [
+                                    Text(
+                                      I18n.t('ruleAction') + ':',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildOutboundChip(
+                                      label: I18n.t('direct'),
+                                      isSelected: r.outbound == 'direct',
+                                      color: Colors.green.shade700,
+                                      onTap: () => ref
+                                          .read(routingConfigProvider.notifier)
+                                          .updateRuleOutbound(i, 'direct'),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _buildOutboundChip(
+                                      label: I18n.t('proxy'),
+                                      isSelected: r.outbound == 'proxy',
+                                      color: scheme.primary,
+                                      onTap: () => ref
+                                          .read(routingConfigProvider.notifier)
+                                          .updateRuleOutbound(i, 'proxy'),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    _buildOutboundChip(
+                                      label: I18n.t('block'),
+                                      isSelected: r.outbound == 'block',
+                                      color: Colors.red.shade700,
+                                      onTap: () => ref
+                                          .read(routingConfigProvider.notifier)
+                                          .updateRuleOutbound(i, 'block'),
+                                    ),
+                                    const Spacer(),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined, size: 18),
+                                      tooltip: I18n.t('edit'),
+                                      onPressed: () => _openEditRuleDialog(
+                                          context, ref,
+                                          existingRule: r, index: i),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline,
+                                          size: 18, color: Colors.red),
+                                      tooltip: I18n.t('delete'),
+                                      onPressed: () => ref
+                                          .read(routingConfigProvider.notifier)
+                                          .removeRule(i),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
                         );
-                      },
+                      }),
+                  ],
+                ),
+              ),
+
+              // Tab 2: 规则集管理 (Rule-Sets - Karing / armwall style)
+              configAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (c) => Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cloud_sync_outlined, size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${I18n.t("ruleSets")} (${_ruleSets.length})',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                          const Spacer(),
+                          FilledButton.tonalIcon(
+                            icon: _isUpdatingAll
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh, size: 16),
+                            label: Text(
+                              _isUpdatingAll
+                                  ? I18n.t('updating')
+                                  : I18n.t('updateRuleSets'),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            onPressed:
+                                _isUpdatingAll ? null : _updateAllRuleSets,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _ruleSets.length,
+                        itemBuilder: (context, index) {
+                          final item = _ruleSets[index];
+                          final currentStatus =
+                              _getRuleStatusForTag(c, item.tag);
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            elevation: isDark ? 0 : 0.5,
+                            shape: RoundedRectangleBorder(
+                              side: BorderSide(
+                                color: isDark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : const Color(0xFFCBD5E1),
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(item.icon,
+                                          size: 20, color: scheme.primary),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: scheme.primary.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          item.tag,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: scheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      FilledButton.tonal(
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 6),
+                                          minimumSize: Size.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        onPressed: item.isUpdating
+                                            ? null
+                                            : () => _updateRuleSet(item),
+                                        child: item.isUpdating
+                                            ? const SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child: CircularProgressIndicator(
+                                                    strokeWidth: 2),
+                                              )
+                                            : Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: const [
+                                                  Icon(Icons.refresh, size: 14),
+                                                  SizedBox(width: 4),
+                                                  Text('Update',
+                                                      style: TextStyle(
+                                                          fontSize: 11)),
+                                                ],
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    item.description,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurface,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.url,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: scheme.onSurfaceVariant
+                                          .withOpacity(0.7),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (item.lastUpdated != null ||
+                                      item.error != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      item.error ??
+                                          'Last updated: ${item.lastUpdated}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: item.error != null
+                                            ? Colors.red
+                                            : Colors.green.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 10),
+                                  const Divider(height: 1),
+                                  const SizedBox(height: 10),
+                                  // Outbound Action Selector for this Rule-Set
+                                  Row(
+                                    children: [
+                                      Text(
+                                        I18n.t('outboundAction') + ':',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildOutboundChip(
+                                        label: I18n.t('direct'),
+                                        isSelected: currentStatus == 'direct',
+                                        color: Colors.green.shade700,
+                                        onTap: () => ref
+                                            .read(routingConfigProvider.notifier)
+                                            .setRuleForTag(
+                                              tag: item.tag,
+                                              name: item.description,
+                                              outbound: 'direct',
+                                            ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildOutboundChip(
+                                        label: I18n.t('proxy'),
+                                        isSelected: currentStatus == 'proxy',
+                                        color: scheme.primary,
+                                        onTap: () => ref
+                                            .read(routingConfigProvider.notifier)
+                                            .setRuleForTag(
+                                              tag: item.tag,
+                                              name: item.description,
+                                              outbound: 'proxy',
+                                            ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildOutboundChip(
+                                        label: I18n.t('block'),
+                                        isSelected: currentStatus == 'block',
+                                        color: Colors.red.shade700,
+                                        onTap: () => ref
+                                            .read(routingConfigProvider.notifier)
+                                            .setRuleForTag(
+                                              tag: item.tag,
+                                              name: item.description,
+                                              outbound: 'block',
+                                            ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildOutboundChip(
+                                        label: I18n.t('disabled'),
+                                        isSelected: currentStatus == 'disable',
+                                        color: Colors.grey.shade600,
+                                        onTap: () => ref
+                                            .read(routingConfigProvider.notifier)
+                                            .setRuleForTag(
+                                              tag: item.tag,
+                                              name: item.description,
+                                              outbound: 'disable',
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -779,15 +1172,248 @@ class _RoutingPageState extends State<RoutingPage>
     );
   }
 
-  void _addRule(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (_) => const _RuleEditDialog(),
-    ).then((rule) {
-      if (rule is RoutingRule) {
-        ref.read(routingConfigProvider.notifier).addRule(rule);
-      }
-    });
+  Widget _buildOutboundChip({
+    required String label,
+    required bool isSelected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? color.withOpacity(0.3) : color.withOpacity(0.15))
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected
+                ? color
+                : (isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFCBD5E1)),
+            width: isSelected ? 1.4 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getRuleIcon(RoutingRule r) {
+    final text = '${r.name} ${r.domains.join(" ")} ${r.ip.join(" ")}'.toLowerCase();
+    if (text.contains('apple')) return Icons.apple;
+    if (text.contains('google')) return Icons.travel_explore;
+    if (text.contains('openai') || text.contains('ai') || text.contains('claude')) {
+      return Icons.smart_toy_outlined;
+    }
+    if (text.contains('ad') || text.contains('block') || text.contains('shield')) {
+      return Icons.shield_outlined;
+    }
+    if (text.contains('cn') || text.contains('china') || text.contains('国内')) {
+      return Icons.language;
+    }
+    if (text.contains('telegram')) return Icons.send_outlined;
+    if (text.contains('github') || text.contains('code')) return Icons.code;
+    if (text.contains('netflix') || text.contains('youtube') || text.contains('media')) {
+      return Icons.movie_outlined;
+    }
+    if (text.contains('private') || text.contains('lan')) return Icons.home_outlined;
+    return Icons.route;
+  }
+}
+
+/// Dialog for creating/editing a custom routing rule
+class _EditRuleDialog extends StatefulWidget {
+  final RoutingRule? existingRule;
+  final ValueChanged<RoutingRule> onSave;
+
+  const _EditRuleDialog({this.existingRule, required this.onSave});
+
+  @override
+  State<_EditRuleDialog> createState() => _EditRuleDialogState();
+}
+
+class _EditRuleDialogState extends State<_EditRuleDialog> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _domainsCtrl;
+  late TextEditingController _ipCtrl;
+  late TextEditingController _portCtrl;
+  late String _outbound;
+  late String _network;
+  late bool _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.existingRule;
+    _nameCtrl = TextEditingController(text: r?.name ?? '');
+    _domainsCtrl = TextEditingController(text: r?.domains.join('\n') ?? '');
+    _ipCtrl = TextEditingController(text: r?.ip.join('\n') ?? '');
+    _portCtrl = TextEditingController(text: r?.port.join(', ') ?? '');
+    _outbound = r?.outbound.isNotEmpty == true ? r!.outbound : 'direct';
+    _network = r?.network ?? '';
+    _enabled = r?.enabled ?? true;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _domainsCtrl.dispose();
+    _ipCtrl.dispose();
+    _portCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return AlertDialog(
+      title: Text(widget.existingRule == null
+          ? I18n.t('addCustomRule')
+          : I18n.t('editRule')),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _nameCtrl,
+                decoration: InputDecoration(
+                  labelText: I18n.t('ruleName'),
+                  hintText: 'e.g. 苹果直连 / OpenAI代理',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _outbound,
+                decoration: InputDecoration(
+                  labelText: I18n.t('outboundAction'),
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(
+                      value: 'direct',
+                      child: Text('${I18n.t("direct")} (Direct)')),
+                  DropdownMenuItem(
+                      value: 'proxy',
+                      child: Text('${I18n.t("proxy")} (Proxy)')),
+                  DropdownMenuItem(
+                      value: 'block',
+                      child: Text('${I18n.t("block")} (Block)')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _outbound = val);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _domainsCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: I18n.t('domains'),
+                  hintText: 'geosite:cn\nexample.com\n*.domain.com',
+                  border: const OutlineInputBorder(),
+                  helperText: 'One per line or comma separated',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _ipCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: I18n.t('ipCidr'),
+                  hintText: 'geoip:cn\n192.168.1.0/24',
+                  border: const OutlineInputBorder(),
+                  helperText: 'One per line or comma separated',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _portCtrl,
+                      decoration: InputDecoration(
+                        labelText: I18n.t('portRange'),
+                        hintText: '80, 443',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _network,
+                      decoration: InputDecoration(
+                        labelText: I18n.t('networkType'),
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: '', child: Text('All (全部)')),
+                        DropdownMenuItem(value: 'tcp', child: Text('TCP')),
+                        DropdownMenuItem(value: 'udp', child: Text('UDP')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _network = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(I18n.t('enabled')),
+                value: _enabled,
+                onChanged: (v) => setState(() => _enabled = v),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(I18n.t('cancel')),
+        ),
+        FilledButton(
+          onPressed: () {
+            final parseList = (String raw) => raw
+                .split(RegExp(r'[\n,]'))
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+
+            final rule = RoutingRule(
+              name: _nameCtrl.text.trim(),
+              outbound: _outbound,
+              network: _network,
+              enabled: _enabled,
+              domains: parseList(_domainsCtrl.text),
+              ip: parseList(_ipCtrl.text),
+              port: parseList(_portCtrl.text),
+            );
+
+            widget.onSave(rule);
+            Navigator.pop(context);
+          },
+          child: Text(I18n.t('save')),
+        ),
+      ],
+    );
   }
 }
 
@@ -802,6 +1428,8 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
   final customRules = <Map<String, dynamic>>[];
 
   for (final rule in config.rules) {
+    if (!rule.enabled) continue;
+
     if (rule.protocol.isEmpty &&
         rule.network.isEmpty &&
         rule.inbound.isEmpty &&
@@ -860,223 +1488,60 @@ Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
 
   for (final d in rule.domains) {
     if (d.startsWith('geosite:')) {
-      final name = d.substring(8);
-      if (name == 'private') {
+      final tag = d.substring('geosite:'.length);
+      if (tag == 'private') {
         ipIsPrivate = true;
       } else {
-        ruleSet.add('geosite-$name');
+        ruleSet.add('geosite-$tag');
       }
     } else if (d.startsWith('full:')) {
-      domainFull.add(d.substring(5));
-    } else if (d.startsWith('domain:')) {
-      domainSuffix.add(d.substring(7));
+      domainFull.add(d.substring('full:'.length));
     } else if (d.startsWith('keyword:')) {
-      domainKeyword.add(d.substring(8));
+      domainKeyword.add(d.substring('keyword:'.length));
     } else if (d.startsWith('regexp:')) {
-      domainRegexp.add(d.substring(7));
+      domainRegexp.add(d.substring('regexp:'.length));
+    } else if (d.startsWith('domain:')) {
+      domainSuffix.add(d.substring('domain:'.length));
     } else {
       domainSuffix.add(d);
     }
   }
 
-  final ipCidr = <String>[];
+  final ipCIDR = <String>[];
   for (final ip in rule.ip) {
     if (ip.startsWith('geoip:')) {
-      final name = ip.substring(6);
-      if (name == 'private') {
+      final tag = ip.substring('geoip:'.length);
+      if (tag == 'private') {
         ipIsPrivate = true;
       } else {
-        ruleSet.add('geoip-$name');
+        ruleSet.add('geoip-$tag');
       }
     } else {
-      ipCidr.add(ip);
+      ipCIDR.add(ip);
     }
   }
 
   if (ruleSet.isNotEmpty) map['rule_set'] = ruleSet;
-  if (ipIsPrivate) map['ip_is_private'] = true;
   if (domainFull.isNotEmpty) map['domain'] = domainFull;
   if (domainSuffix.isNotEmpty) map['domain_suffix'] = domainSuffix;
   if (domainKeyword.isNotEmpty) map['domain_keyword'] = domainKeyword;
   if (domainRegexp.isNotEmpty) map['domain_regex'] = domainRegexp;
-  if (ipCidr.isNotEmpty) map['ip_cidr'] = ipCidr;
+  if (ipCIDR.isNotEmpty) map['ip_cidr'] = ipCIDR;
+  if (ipIsPrivate) map['ip_is_private'] = true;
 
   if (rule.port.isNotEmpty) {
-    _applyPorts(map, 'port', 'port_range', rule.port);
-  }
-  if (rule.source.isNotEmpty) {
-    map['source_ip_cidr'] = rule.source;
-  }
-  if (rule.sourcePort.isNotEmpty) {
-    _applyPorts(map, 'source_port', 'source_port_range', rule.sourcePort);
+    final portInts = rule.port.map((p) => int.tryParse(p)).whereType<int>().toList();
+    if (portInts.isNotEmpty) map['port'] = portInts;
   }
   if (rule.protocol.isNotEmpty) {
-    map['protocol'] = [rule.protocol];
+    map['protocol'] = rule.protocol.split(',').map((s) => s.trim()).toList();
   }
   if (rule.network.isNotEmpty) {
-    map['network'] = [rule.network];
+    map['network'] = rule.network;
+  }
+  if (rule.outbound.isNotEmpty) {
+    map['outbound'] = rule.outbound;
   }
 
-  map['outbound'] = rule.outbound;
   return map;
-}
-
-void _applyPorts(
-  Map<String, dynamic> map,
-  String singleKey,
-  String rangeKey,
-  List<String> entries,
-) {
-  final single = <int>[];
-  final ranges = <String>[];
-
-  for (final raw in entries) {
-    final entry = raw.trim();
-    if (entry.isEmpty) continue;
-
-    final sep = entry.contains('-') ? '-' : (entry.contains(':') ? ':' : null);
-    if (sep != null) {
-      final parts = entry.split(sep);
-      if (parts.length != 2) continue;
-      final lo = _port(parts[0]);
-      final hi = _port(parts[1]);
-      if (lo == null || hi == null || lo > hi) continue;
-      ranges.add('$lo:$hi');
-      continue;
-    }
-
-    final p = _port(entry);
-    if (p != null) single.add(p);
-  }
-
-  if (single.isNotEmpty) map[singleKey] = single;
-  if (ranges.isNotEmpty) map[rangeKey] = ranges;
-}
-
-int? _port(String s) {
-  final n = int.tryParse(s.trim());
-  if (n == null || n < 0 || n > 65535) return null;
-  return n;
-}
-
-class _RuleEditDialog extends StatefulWidget {
-  const _RuleEditDialog();
-
-  @override
-  State<_RuleEditDialog> createState() => _RuleEditDialogState();
-}
-
-class _RuleEditDialogState extends State<_RuleEditDialog> {
-  final _domains = TextEditingController();
-  final _ip = TextEditingController();
-  final _outbound = TextEditingController(text: 'direct');
-  String _protocol = '';
-  String _network = '';
-
-  @override
-  void dispose() {
-    _domains.dispose();
-    _ip.dispose();
-    _outbound.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New Routing Rule'),
-      content: SizedBox(
-        width: 450,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _domains,
-              decoration: const InputDecoration(
-                labelText: 'Domains (comma-separated)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _ip,
-              decoration: const InputDecoration(
-                labelText: 'IP/CIDR (comma-separated)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _outbound,
-              decoration: const InputDecoration(
-                labelText: 'Outbound',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _protocol.isEmpty ? 'any' : _protocol,
-                    decoration: const InputDecoration(
-                      labelText: 'Protocol',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const ['any', 'tcp', 'udp']
-                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _protocol = v == 'any' ? '' : v!),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _network.isEmpty ? 'any' : _network,
-                    decoration: const InputDecoration(
-                      labelText: 'Network',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const ['any', 'tcp', 'udp']
-                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _network = v == 'any' ? '' : v!),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final rule = RoutingRule(
-              domains: _domains.text
-                  .split(',')
-                  .map((s) => s.trim())
-                  .where((s) => s.isNotEmpty)
-                  .toList(),
-              ip: _ip.text
-                  .split(',')
-                  .map((s) => s.trim())
-                  .where((s) => s.isNotEmpty)
-                  .toList(),
-              outbound: _outbound.text,
-              protocol: _protocol,
-              network: _network,
-            );
-            Navigator.pop(context, rule);
-          },
-          child: const Text('Add'),
-        ),
-      ],
-    );
-  }
 }

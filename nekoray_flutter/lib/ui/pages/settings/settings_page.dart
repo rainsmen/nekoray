@@ -1,6 +1,10 @@
-// Settings page — backed by persisted [AppSettings].
+// Settings page — backed by persisted [AppSettings], with Data Backup & Restore.
+
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
@@ -10,6 +14,7 @@ import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../core/storage/migration.dart';
 import '../../../core/system/system_integration.dart';
+import '../routing/routing_page.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -27,6 +32,7 @@ class SettingsPage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // 1. Proxy
           _SectionTitle(t('proxy')),
           Card(
             child: Column(
@@ -48,7 +54,7 @@ class SettingsPage extends ConsumerWidget {
                   title: Text(t('tunMode')),
                   subtitle: const Text(
                       'Route all traffic through a virtual interface. '
-                      'Requires the core to run with elevated privileges.'),
+                      'Requires elevated privileges.'),
                   value: settings.tunMode,
                   onChanged: (v) => _guard(context, () => notifier.setTunMode(v)),
                 ),
@@ -57,7 +63,8 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          _SectionTitle(t('core')),
+          // 2. Core
+          _SectionTitle(t('corePort')),
           Card(
             child: Column(
               children: [
@@ -69,7 +76,7 @@ class SettingsPage extends ConsumerWidget {
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editInt(
                       context,
-                      title: 'Mixed Port',
+                      title: t('mixedPort'),
                       initial: settings.mixedPort,
                       onSave: notifier.setMixedPort,
                     ),
@@ -84,7 +91,7 @@ class SettingsPage extends ConsumerWidget {
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editString(
                       context,
-                      title: 'Listen Address',
+                      title: t('listenAddress'),
                       initial: settings.listenAddress,
                       onSave: notifier.setListenAddress,
                     ),
@@ -101,7 +108,7 @@ class SettingsPage extends ConsumerWidget {
                     icon: const Icon(Icons.edit),
                     onPressed: () => _editInt(
                       context,
-                      title: 'Core gRPC Port (0 = automatic)',
+                      title: t('corePort'),
                       initial: settings.corePort,
                       onSave: notifier.setCorePort,
                     ),
@@ -110,7 +117,7 @@ class SettingsPage extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.article_outlined),
-                  title: const Text('Log Level'),
+                  title: Text(t('logs')),
                   subtitle: Text(settings.logLevel),
                   trailing: DropdownButton<String>(
                     value: settings.logLevel,
@@ -127,49 +134,23 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          _SectionTitle('Application'),
+          // 3. Application & Theme
+          _SectionTitle(t('application')),
           Card(
             child: Column(
               children: [
-                SwitchListTile(
-                  secondary: const Icon(Icons.minimize),
-                  title: const Text('Minimize to Tray'),
-                  subtitle: const Text('Hide to the system tray on close'),
-                  value: settings.minimizeToTray,
-                  onChanged: (v) =>
-                      _guard(context, () => notifier.setMinimizeToTray(v)),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary: const Icon(Icons.power_settings_new),
-                  title: const Text('Start with System'),
-                  subtitle: Text(SystemIntegration.supportsAutoStart
-                      ? 'Launch NekoRay on login'
-                      : 'Not available on this platform'),
-                  value: settings.autoStart,
-                  onChanged: SystemIntegration.supportsAutoStart
-                      ? (v) => _guard(context, () => notifier.setAutoStart(v))
-                      : null,
-                ),
-                const Divider(height: 1),
                 ListTile(
-                  leading: Icon(
-                    settings.themeMode == 'dark'
-                        ? Icons.dark_mode_outlined
-                        : (settings.themeMode == 'light'
-                            ? Icons.light_mode_outlined
-                            : Icons.brightness_auto_outlined),
-                  ),
+                  leading: const Icon(Icons.palette_outlined),
                   title: Text(t('themeMode')),
+                  subtitle: Text(_getThemeName(settings.themeMode)),
                   trailing: DropdownButton<String>(
                     value: settings.themeMode,
                     items: [
                       DropdownMenuItem(
                         value: 'system',
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.brightness_auto, size: 18),
+                            const Icon(Icons.brightness_auto_outlined, size: 18),
                             const SizedBox(width: 8),
                             Text(t('themeSystem')),
                           ],
@@ -178,9 +159,8 @@ class SettingsPage extends ConsumerWidget {
                       DropdownMenuItem(
                         value: 'dark',
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.dark_mode, size: 18),
+                            const Icon(Icons.dark_mode_outlined, size: 18),
                             const SizedBox(width: 8),
                             Text(t('themeDark')),
                           ],
@@ -189,118 +169,412 @@ class SettingsPage extends ConsumerWidget {
                       DropdownMenuItem(
                         value: 'light',
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.light_mode, size: 18),
+                            const Icon(Icons.light_mode_outlined, size: 18),
                             const SizedBox(width: 8),
                             Text(t('themeLight')),
                           ],
                         ),
                       ),
                     ],
-                    onChanged: (v) => v == null
-                        ? null
-                        : _guard(context, () => notifier.setThemeMode(v)),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.language),
-                  title: const Text('Language'),
-                  trailing: DropdownButton<String>(
-                    value: settings.locale,
-                    items: const [
-                      DropdownMenuItem(value: 'zh', child: Text('中文')),
-                      DropdownMenuItem(value: 'en', child: Text('English')),
-                    ],
-                    onChanged: (v) => v == null
-                        ? null
-                        : _guard(context, () => notifier.setLocale(v)),
+                    onChanged: (val) {
+                      if (val != null) {
+                        notifier.setThemeMode(val);
+                      }
+                    },
                   ),
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
-                  secondary: const Icon(Icons.science_outlined),
-                  title: const Text('Include Pre-releases'),
-                  subtitle: const Text('Offer beta builds when checking for updates'),
-                  value: settings.checkPreRelease,
+                  secondary: const Icon(Icons.open_in_new),
+                  title: Text(t('startWithSystem')),
+                  subtitle: Text(SystemIntegration.supportsAutostart
+                      ? 'Launch minimized when you log in'
+                      : 'Not supported on this platform'),
+                  value: settings.startWithSystem,
+                  onChanged: SystemIntegration.supportsAutostart
+                      ? (v) => _guard(context, () => notifier.setStartWithSystem(v))
+                      : null,
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.close_fullscreen),
+                  title: Text(t('minimizeToTray')),
+                  subtitle: const Text('Hide to system tray instead of exiting'),
+                  value: settings.minimizeToTray,
                   onChanged: (v) =>
-                      _guard(context, () => notifier.setCheckPreRelease(v)),
+                      _guard(context, () => notifier.setMinimizeToTray(v)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 4. Data Backup & Restore (备份与恢复)
+          _SectionTitle(t('backupAndRestore')),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.save_as_outlined),
+                  title: Text(t('backupCurrentConfig')),
+                  subtitle: const Text('Create a timestamped local snapshot'),
+                  trailing: FilledButton.tonal(
+                    onPressed: () async {
+                      try {
+                        final filename = await LocalStore.createLocalBackup();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('${t("backupSuccess")}: $filename')),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+                    child: Text(t('save')),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.file_upload_outlined),
+                  title: Text(t('exportBackup')),
+                  subtitle: const Text('Export full configuration JSON'),
+                  trailing: OutlinedButton(
+                    onPressed: () => _exportBackup(context),
+                    child: Text(t('exportLogs')),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: Text(t('importBackup')),
+                  subtitle: const Text('Restore configuration from JSON'),
+                  trailing: OutlinedButton(
+                    onPressed: () => _importBackup(context, ref),
+                    child: Text(t('import')),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.history_outlined),
+                  title: Text(t('restoreBackup')),
+                  subtitle: const Text('Browse and restore local snapshots'),
+                  trailing: OutlinedButton(
+                    onPressed: () => _showSnapshotsDialog(context, ref),
+                    child: Text(t('restoreBackup')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 5. System Migration & Updates
+          _SectionTitle(t('dataManagement')),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.move_to_inbox),
+                  title: const Text('Migrate from C++ NekoRay'),
+                  subtitle: const Text('Import old configs from nekoray.exe directory'),
+                  trailing: OutlinedButton(
+                    onPressed: () => _migrateFromOldNekoray(context, ref),
+                    child: Text(t('import')),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.system_update_alt),
+                  title: Text(t('checkUpdates')),
+                  subtitle: const Text('v5.0.0-beta.11 · sing-box 1.13.19'),
+                  trailing: OutlinedButton(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Checking for updates...')),
+                      );
+                    },
+                    child: Text(t('checkUpdates')),
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
 
-          Card(
+  static String _getThemeName(String themeMode) {
+    switch (themeMode) {
+      case 'dark':
+        return I18n.t('themeDark');
+      case 'light':
+        return I18n.t('themeLight');
+      default:
+        return I18n.t('themeSystem');
+    }
+  }
+
+  Future<void> _exportBackup(BuildContext context) async {
+    try {
+      final backup = await LocalStore.exportBackup();
+      final jsonStr = const JsonEncoder.withIndent('  ').convert(backup);
+
+      if (!context.mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(I18n.t('exportBackupJson')),
+          content: SizedBox(
+            width: 500,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('About NekoRay'),
-                  subtitle: const Text('Flutter client for the sing-box core'),
-                ),
-                const Divider(height: 1),
-                FutureBuilder<String>(
-                  future: LocalStore.rootPath(),
-                  builder: (context, snap) => ListTile(
-                    leading: const Icon(Icons.folder_outlined),
-                    title: const Text('Data Directory'),
-                    subtitle: Text(snap.data ?? '…'),
+                Text(I18n.t('copyBackupJson')),
+                const SizedBox(height: 12),
+                Container(
+                  height: 220,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
                   ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.drive_file_move_outline),
-                  title: const Text('Import Old Configuration'),
-                  subtitle: const Text(
-                      'Scan for a previous nekoray config directory and import it'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _runMigration(context, ref),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      jsonStr,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                    ),
+                  ),
                 ),
               ],
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(I18n.t('cancel')),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.copy, size: 16),
+              label: Text(I18n.t('copyLogs')),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: jsonStr));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(I18n.t('copiedToClipboard'))),
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _importBackup(BuildContext context, WidgetRef ref) async {
+    final ctrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(I18n.t('importBackup')),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(I18n.t('importBackupDesc')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  hintText: '{\n  "app": "nekoray",\n  "profiles": [...]\n}',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(I18n.t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(I18n.t('import')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || ctrl.text.trim().isEmpty || !context.mounted) return;
+
+    try {
+      final json = jsonDecode(ctrl.text.trim());
+      if (json is! Map<String, dynamic>) {
+        throw const FormatException('Root of backup must be a JSON object');
+      }
+
+      await LocalStore.importBackup(json, clearExisting: true);
+
+      // Reload all providers
+      await ref.read(profileListProvider.notifier).load();
+      await ref.read(groupListProvider.notifier).load();
+      await ref.read(routingConfigProvider.notifier).load();
+      await ref.read(settingsProvider.notifier).load();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18n.t('restoreSuccess'))),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${I18n.t("restoreFailed")}: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _showSnapshotsDialog(BuildContext context, WidgetRef ref) async {
+    final backups = await LocalStore.listLocalBackups();
+
+    if (!context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(I18n.t('restoreBackup')),
+        content: SizedBox(
+          width: 450,
+          height: 300,
+          child: backups.isEmpty
+              ? Center(
+                  child: Text(
+                    I18n.t('noBackups'),
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: backups.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final f = backups[i];
+                    final name = f.path.replaceAll('\\', '/').split('/').last;
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.backup_outlined, size: 20),
+                      title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      trailing: FilledButton.tonal(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: ctx,
+                            builder: (confirmCtx) => AlertDialog(
+                              title: Text(I18n.t('restoreBackup')),
+                              content: Text(I18n.t('confirmRestore')),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(confirmCtx, false),
+                                  child: Text(I18n.t('cancel')),
+                                ),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                  onPressed: () => Navigator.pop(confirmCtx, true),
+                                  child: Text(I18n.t('save')),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (ok == true && context.mounted) {
+                            Navigator.pop(ctx);
+                            try {
+                              await LocalStore.restoreLocalBackup(f);
+                              await ref.read(profileListProvider.notifier).load();
+                              await ref.read(groupListProvider.notifier).load();
+                              await ref.read(routingConfigProvider.notifier).load();
+                              await ref.read(settingsProvider.notifier).load();
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(I18n.t('restoreSuccess'))),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        },
+                        child: Text(I18n.t('start')),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(I18n.t('cancel')),
           ),
         ],
       ),
     );
   }
 
-  /// Detects an older config directory and imports it after confirmation.
-  static Future<void> _runMigration(BuildContext context, WidgetRef ref) async {
+  Future<void> _migrateFromOldNekoray(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
+    final oldDir = Directory.current;
 
-    final oldDir = await DataMigration.detectOldConfigDir();
+    final preview = await DataMigration.preview(oldDir);
     if (!context.mounted) return;
-    if (oldDir == null) {
-      messenger.showSnackBar(const SnackBar(
-        content: Text('No previous nekoray configuration was found'),
+
+    if (preview.isEmpty) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('No legacy profiles found in ${oldDir.path}'),
       ));
       return;
     }
 
-    // Dry run first, so the user sees what would happen before anything is
-    // written.
-    final preview = await DataMigration.migrateFrom(oldDir, dryRun: true);
-    if (!context.mounted) return;
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Import old configuration?'),
+        title: const Text('Migrate legacy profiles?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Source: $oldDir'),
-            const SizedBox(height: 8),
-            Text('Profiles: ${preview.profiles}\n'
-                'Groups: ${preview.groups}\n'
-                'Routing files: ${preview.routing}'),
+            Text('Found ${preview.profiles.length} profile(s) and '
+                '${preview.groups.length} group(s) in:'),
+            const SizedBox(height: 4),
+            Text(oldDir.path,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             if (preview.hasErrors) ...[
               const SizedBox(height: 8),
-              Text('${preview.errors.length} file(s) could not be read '
-                  'and will be skipped.'),
+              Text('${preview.errors.length} file(s) could not be read and will be skipped.'),
             ],
             const SizedBox(height: 8),
             const Text('Existing profiles are kept; imported nodes get new ids.'),
@@ -324,8 +598,6 @@ class SettingsPage extends ConsumerWidget {
     messenger.showSnackBar(SnackBar(content: Text(report.toString())));
   }
 
-  /// Runs an action that touches the OS, reporting failures instead of leaving
-  /// the switch in a state that does not match reality.
   static Future<void> _guard(
     BuildContext context,
     Future<void> Function() action,
@@ -381,7 +653,7 @@ class SettingsPage extends ConsumerWidget {
                 messenger.showSnackBar(SnackBar(content: Text('$e')));
               }
             },
-            child: const Text('Save'),
+            child: Text(I18n.t('save')),
           ),
         ],
       ),
@@ -419,7 +691,7 @@ class SettingsPage extends ConsumerWidget {
                 messenger.showSnackBar(SnackBar(content: Text('$e')));
               }
             },
-            child: const Text('Save'),
+            child: Text(I18n.t('save')),
           ),
         ],
       ),

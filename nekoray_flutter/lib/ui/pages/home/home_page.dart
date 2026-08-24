@@ -1,4 +1,4 @@
-// Home page — navigation rail, profile list, status bar.
+// Home page — navigation rail, dashboard, profile list, status bar.
 
 import 'dart:convert';
 
@@ -22,9 +22,9 @@ import '../../widgets/proxy_card.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/status_bar.dart';
 
-enum HomePageTab { profiles, routing, dns, connections, logs, settings }
+enum HomePageTab { dashboard, profiles, routing, dns, logs, settings }
 
-final homeTabProvider = StateProvider<HomePageTab>((ref) => HomePageTab.profiles);
+final homeTabProvider = StateProvider<HomePageTab>((ref) => HomePageTab.dashboard);
 
 /// Currently connected profile ID (0 = disconnected).
 final connectedProfileProvider = StateProvider<int>((ref) => 0);
@@ -51,8 +51,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       await ref.read(settingsProvider.notifier).load();
     }
 
-    // Start the core and connect. A failure here used to be swallowed by an
-    // empty catch, leaving the UI looking healthy while every action failed.
     final error = await connectToCore(
       ref,
       requestedPort: ref.read(settingsProvider).corePort,
@@ -68,8 +66,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final corrupt = ref.read(profileListProvider.notifier).corruptFiles;
     if (corrupt.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${corrupt.length} profile file(s) could not be read '
-            'and were skipped'),
+        content: Text('${corrupt.length} profile file(s) could not be read and were skipped'),
       ));
     }
   }
@@ -81,8 +78,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     void select(int i) =>
         ref.read(homeTabProvider.notifier).state = HomePageTab.values[i];
 
-    // Phones get a bottom bar; a NavigationRail eats too much of a narrow
-    // viewport. ResponsiveLayout existed but nothing used it.
     if (ResponsiveLayout.isMobile(context)) {
       return Scaffold(
         body: _buildContent(tab),
@@ -90,12 +85,18 @@ class _HomePageState extends ConsumerState<HomePage> {
           selectedIndex: tab.index,
           onDestinationSelected: select,
           destinations: [
-            NavigationDestination(icon: const Icon(Icons.list_outlined), label: I18n.t('profiles')),
-            NavigationDestination(icon: const Icon(Icons.route_outlined), label: I18n.t('routing')),
-            NavigationDestination(icon: const Icon(Icons.dns_outlined), label: I18n.t('dns')),
-            NavigationDestination(icon: const Icon(Icons.device_hub_outlined), label: I18n.t('connections')),
-            NavigationDestination(icon: const Icon(Icons.article_outlined), label: I18n.t('logs')),
-            NavigationDestination(icon: const Icon(Icons.settings_outlined), label: I18n.t('settings')),
+            NavigationDestination(
+                icon: const Icon(Icons.dashboard_outlined), label: I18n.t('dashboard')),
+            NavigationDestination(
+                icon: const Icon(Icons.list_outlined), label: I18n.t('profiles')),
+            NavigationDestination(
+                icon: const Icon(Icons.alt_route), label: I18n.t('routing')),
+            NavigationDestination(
+                icon: const Icon(Icons.dns_outlined), label: I18n.t('dns')),
+            NavigationDestination(
+                icon: const Icon(Icons.article_outlined), label: I18n.t('logs')),
+            NavigationDestination(
+                icon: const Icon(Icons.settings_outlined), label: I18n.t('settings')),
           ],
         ),
       );
@@ -107,25 +108,42 @@ class _HomePageState extends ConsumerState<HomePage> {
           NavigationRail(
             selectedIndex: tab.index,
             onDestinationSelected: select,
-            labelType: NavigationRailLabelType.selected,
+            labelType: NavigationRailLabelType.all,
             leading: const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Icon(Icons.public, size: 32),
             ),
             destinations: [
               NavigationRailDestination(
-                  icon: const Icon(Icons.list_outlined), label: Text(I18n.t('profiles'))),
+                icon: const Icon(Icons.dashboard_outlined),
+                selectedIcon: const Icon(Icons.dashboard),
+                label: Text(I18n.t('dashboard')),
+              ),
               NavigationRailDestination(
-                  icon: const Icon(Icons.route_outlined), label: Text(I18n.t('routing'))),
+                icon: const Icon(Icons.list_outlined),
+                selectedIcon: const Icon(Icons.list),
+                label: Text(I18n.t('profiles')),
+              ),
               NavigationRailDestination(
-                  icon: const Icon(Icons.dns_outlined), label: Text(I18n.t('dns'))),
+                icon: const Icon(Icons.alt_route),
+                selectedIcon: const Icon(Icons.alt_route),
+                label: Text(I18n.t('routing')),
+              ),
               NavigationRailDestination(
-                  icon: const Icon(Icons.device_hub_outlined),
-                  label: Text(I18n.t('connections'))),
+                icon: const Icon(Icons.dns_outlined),
+                selectedIcon: const Icon(Icons.dns),
+                label: Text(I18n.t('dns')),
+              ),
               NavigationRailDestination(
-                  icon: const Icon(Icons.article_outlined), label: Text(I18n.t('logs'))),
+                icon: const Icon(Icons.article_outlined),
+                selectedIcon: const Icon(Icons.article),
+                label: Text(I18n.t('logs')),
+              ),
               NavigationRailDestination(
-                  icon: const Icon(Icons.settings_outlined), label: Text(I18n.t('settings'))),
+                icon: const Icon(Icons.settings_outlined),
+                selectedIcon: const Icon(Icons.settings),
+                label: Text(I18n.t('settings')),
+              ),
             ],
           ),
           VerticalDivider(
@@ -138,14 +156,14 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildContent(HomePageTab tab) {
     switch (tab) {
+      case HomePageTab.dashboard:
+        return const ConnectionsPage();
       case HomePageTab.profiles:
         return const _ProfilesTab();
       case HomePageTab.routing:
         return const RoutingPage();
       case HomePageTab.dns:
         return const DnsPage();
-      case HomePageTab.connections:
-        return const ConnectionsPage();
       case HomePageTab.logs:
         return const LogsPage();
       case HomePageTab.settings:
@@ -177,7 +195,7 @@ class _ProfilesTab extends ConsumerWidget {
                 child: TextField(
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
-                    hintText: 'Search profiles...',
+                    hintText: I18n.t('searchProfiles'),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8)),
                     isDense: true,
@@ -189,7 +207,7 @@ class _ProfilesTab extends ConsumerWidget {
               const SizedBox(width: 12),
               IconButton(
                 icon: const Icon(Icons.add_circle_outline),
-                tooltip: 'Add Profile',
+                tooltip: I18n.t('addProfile'),
                 onPressed: () => showDialog<void>(
                   context: context,
                   builder: (_) => const ProfileEditDialog(),
@@ -197,7 +215,7 @@ class _ProfilesTab extends ConsumerWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.content_paste_go),
-                tooltip: 'Import from Clipboard',
+                tooltip: I18n.t('import'),
                 onPressed: () => _importFromClipboard(context, ref),
               ),
               IconButton(
@@ -210,13 +228,13 @@ class _ProfilesTab extends ConsumerWidget {
         ),
         Expanded(
           child: profiles.isEmpty
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.cloud_off, size: 48),
-                      SizedBox(height: 8),
-                      Text('No profiles yet. Click + to add one.'),
+                      const Icon(Icons.cloud_off, size: 48),
+                      const SizedBox(height: 8),
+                      Text(I18n.t('noProfiles')),
                     ],
                   ),
                 )
@@ -295,7 +313,7 @@ class _ProfilesTab extends ConsumerWidget {
               child: Text(I18n.t('cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Import')),
+              child: Text(I18n.t('import'))),
         ],
       ),
     );
@@ -334,7 +352,7 @@ class _ProfilesTab extends ConsumerWidget {
             if (connectedId == profile.id)
               ListTile(
                 leading: const Icon(Icons.stop, color: Colors.red),
-                title: const Text('Stop', style: TextStyle(color: Colors.red)),
+                title: Text(I18n.t('stop'), style: const TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _stop(context, ref);
@@ -362,7 +380,7 @@ class _ProfilesTab extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
+              title: Text(I18n.t('delete'), style: const TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);
                 _confirmDelete(context, ref, profile);
@@ -379,7 +397,7 @@ class _ProfilesTab extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete profile?'),
+        title: Text(I18n.t('confirmDelete')),
         content: Text(profile.name.isEmpty ? profile.address : profile.name),
         actions: [
           TextButton(
@@ -404,11 +422,11 @@ class _ProfilesTab extends ConsumerWidget {
       await ref.read(grpcClientProvider).stopCore();
       ref.read(connectedProfileProvider.notifier).state = 0;
       ref.read(coreLogProvider.notifier).add('[INFO] Proxy stopped');
-      messenger.showSnackBar(const SnackBar(content: Text('Stopped proxy')));
+      messenger.showSnackBar(SnackBar(content: Text(I18n.t('stop'))));
     } catch (e) {
       ref.read(coreLogProvider.notifier).add('[ERROR] Failed to stop proxy: $e');
       messenger.showSnackBar(
-        SnackBar(content: Text('Failed to stop: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('${I18n.t("stop")} failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -428,8 +446,6 @@ class _ProfilesTab extends ConsumerWidget {
       }
       final client = ref.read(grpcClientProvider);
 
-      // Stop whatever is running before loading a new config; the core rejects
-      // Start while an instance exists.
       await client.stopCore();
       ref.read(connectedProfileProvider.notifier).state = 0;
 
@@ -469,12 +485,12 @@ class _ProfilesTab extends ConsumerWidget {
       ref.read(connectedProfileProvider.notifier).state = profile.id;
       ref.read(coreLogProvider.notifier).add('[INFO] Proxy successfully started for $profileName');
       messenger.showSnackBar(SnackBar(
-          content: Text('Started proxy for $profileName')));
+          content: Text('${I18n.t("connected")}: $profileName')));
     } catch (e) {
       ref.read(connectedProfileProvider.notifier).state = 0;
       ref.read(coreLogProvider.notifier).add('[ERROR] Failed to start $profileName: $e');
       messenger.showSnackBar(
-        SnackBar(content: Text('Failed to start: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('${I18n.t("start")} failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -496,16 +512,10 @@ class _CoreBanner extends ConsumerWidget {
       ),
       actions: [
         TextButton(
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            final err = await connectToCore(
-              ref,
-              requestedPort: ref.read(settingsProvider).corePort,
-            );
-            if (err != null) {
-              messenger.showSnackBar(SnackBar(content: Text(err)));
-            }
-          },
+          onPressed: () => connectToCore(
+            ref,
+            requestedPort: ref.read(settingsProvider).corePort,
+          ),
           child: Text(I18n.t('retry')),
         ),
       ],

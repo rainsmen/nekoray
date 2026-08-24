@@ -61,7 +61,7 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
   Widget build(BuildContext context) {
     final schema = protocolSchemas[_type] ?? const <FieldSchema>[];
     return AlertDialog(
-      title: Text(widget.existing == null ? 'New Profile' : 'Edit Profile'),
+      title: Text(widget.existing == null ? I18n.t('newProfile') : I18n.t('editProfile')),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -71,9 +71,9 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _type,
-                decoration: const InputDecoration(
-                  labelText: 'Protocol',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: I18n.t('protocol'),
+                  border: const OutlineInputBorder(),
                 ),
                 items: protocolTypes
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
@@ -105,11 +105,11 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(I18n.t('cancel')),
         ),
         FilledButton(
           onPressed: _saving ? null : _save,
-          child: Text(widget.existing == null ? 'Create' : 'Save'),
+          child: Text(widget.existing == null ? I18n.t('create') : I18n.t('save')),
         ),
       ],
     );

@@ -296,6 +296,8 @@ class ProfileGroup {
 
 /// A routing rule as edited in the UI.
 class RoutingRule {
+  String name;
+  bool enabled;
   List<String> domains;
   List<String> ip;
   List<String> port;
@@ -307,12 +309,14 @@ class RoutingRule {
   String network;
 
   RoutingRule({
+    this.name = '',
+    this.enabled = true,
     List<String>? domains,
     List<String>? ip,
     List<String>? port,
     List<String>? source,
     List<String>? sourcePort,
-    this.outbound = '',
+    this.outbound = 'direct',
     this.protocol = '',
     this.inbound = '',
     this.network = '',
@@ -323,18 +327,22 @@ class RoutingRule {
         sourcePort = sourcePort ?? <String>[];
 
   factory RoutingRule.fromJson(Map<String, dynamic> j) => RoutingRule(
+        name: (j['name'] as String?) ?? '',
+        enabled: j['enabled'] != false,
         domains: _asStringList(j['domains']),
         ip: _asStringList(j['ip']),
         port: _asStringList(j['port']),
         source: _asStringList(j['source']),
         sourcePort: _asStringList(j['source_port']),
-        outbound: (j['outbound'] as String?) ?? '',
+        outbound: (j['outbound'] as String?) ?? 'direct',
         protocol: (j['protocol'] as String?) ?? '',
         inbound: (j['inbound'] as String?) ?? '',
         network: (j['network'] as String?) ?? '',
       );
 
   Map<String, dynamic> toJson() => {
+        'name': name,
+        'enabled': enabled,
         'domains': domains,
         'ip': ip,
         'port': port,
@@ -345,6 +353,33 @@ class RoutingRule {
         'inbound': inbound,
         'network': network,
       };
+
+  RoutingRule copyWith({
+    String? name,
+    bool? enabled,
+    List<String>? domains,
+    List<String>? ip,
+    List<String>? port,
+    List<String>? source,
+    List<String>? sourcePort,
+    String? outbound,
+    String? protocol,
+    String? inbound,
+    String? network,
+  }) =>
+      RoutingRule(
+        name: name ?? this.name,
+        enabled: enabled ?? this.enabled,
+        domains: domains ?? List.from(this.domains),
+        ip: ip ?? List.from(this.ip),
+        port: port ?? List.from(this.port),
+        source: source ?? List.from(this.source),
+        sourcePort: sourcePort ?? List.from(this.sourcePort),
+        outbound: outbound ?? this.outbound,
+        protocol: protocol ?? this.protocol,
+        inbound: inbound ?? this.inbound,
+        network: network ?? this.network,
+      );
 }
 
 // --- helpers ------------------------------------------------------------

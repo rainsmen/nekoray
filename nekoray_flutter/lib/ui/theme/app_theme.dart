@@ -56,11 +56,16 @@ class AppTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: _primarySeed,
       brightness: Brightness.light,
-      surface: const Color(0xFFF8FAFC), // Slate-50 background
-      surfaceContainerLowest: const Color(0xFFFFFFFF),
-      surfaceContainerLow: const Color(0xFFF1F5F9),
-      surfaceContainer: const Color(0xFFE2E8F0),
-      surfaceContainerHigh: const Color(0xFFCBD5E1),
+      surface: const Color(0xFFF8FAFC), // Slate-50 clean background
+      surfaceContainerLowest: const Color(0xFFFFFFFF), // Pure white cards
+      surfaceContainerLow: const Color(0xFFFFFFFF),
+      surfaceContainer: const Color(0xFFF1F5F9),
+      surfaceContainerHigh: const Color(0xFFE2E8F0),
+      surfaceContainerHighest: const Color(0xFFCBD5E1),
+      onSurface: const Color(0xFF0F172A), // Slate-900 high contrast text
+      onSurfaceVariant: const Color(0xFF475569), // Slate-600 secondary text
+      primary: const Color(0xFF4338CA), // Indigo-700
+      onPrimary: Colors.white,
     );
 
     return _buildThemeData(scheme, Brightness.light);
@@ -76,6 +81,7 @@ class AppTheme {
       surfaceContainer: const Color(0xFF334155),
       surfaceContainerHigh: const Color(0xFF475569),
       primary: const Color(0xFF818CF8), // Indigo-400
+      onPrimary: const Color(0xFF0F172A),
     );
 
     return _buildThemeData(scheme, Brightness.dark);
@@ -110,23 +116,27 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        elevation: 0,
+        elevation: isDark ? 0 : 0.5,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
             color: isDark
                 ? Colors.white.withOpacity(0.08)
-                : const Color(0xFFE2E8F0),
+                : const Color(0xFFCBD5E1),
             width: 1,
           ),
         ),
-        color: scheme.surfaceContainerLow,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         margin: const EdgeInsets.symmetric(vertical: 6),
       ),
       dialogTheme: DialogThemeData(
         elevation: 6,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFCBD5E1),
+            width: 1,
+          ),
         ),
         backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
       ),
@@ -144,7 +154,8 @@ class AppTheme {
           side: BorderSide(
             color: isDark
                 ? Colors.white.withOpacity(0.15)
-                : const Color(0xFFCBD5E1),
+                : const Color(0xFF94A3B8),
+            width: 1.2,
           ),
         ),
       ),
@@ -152,7 +163,7 @@ class AppTheme {
         filled: true,
         fillColor: isDark
             ? Colors.black.withOpacity(0.2)
-            : const Color(0xFFF1F5F9),
+            : Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -167,7 +178,7 @@ class AppTheme {
           borderSide: BorderSide(
             color: isDark
                 ? Colors.white.withOpacity(0.08)
-                : const Color(0xFFE2E8F0),
+                : const Color(0xFFCBD5E1),
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -183,9 +194,13 @@ class AppTheme {
         side: BorderSide(
           color: isDark
               ? Colors.white.withOpacity(0.1)
-              : const Color(0xFFE2E8F0),
+              : const Color(0xFFCBD5E1),
         ),
-        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        labelStyle: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: scheme.onSurface,
+        ),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surface,

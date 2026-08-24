@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/i18n.dart';
 
 /// Bottom status bar showing connection state and traffic.
 class StatusBar extends StatelessWidget {
@@ -28,18 +29,30 @@ class StatusBar extends StatelessWidget {
           Icon(
             connected ? Icons.check_circle : Icons.radio_button_unchecked,
             size: 16,
-            color: connected ? Colors.green : scheme.onSurfaceVariant,
+            color: connected ? Colors.green.shade600 : scheme.onSurfaceVariant,
           ),
           const SizedBox(width: 6),
-          Text(connected ? 'Connected' : 'Disconnected', style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            connected ? I18n.t('connected') : I18n.t('disconnected'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: connected ? Colors.green.shade700 : scheme.onSurfaceVariant,
+                ),
+          ),
           const Spacer(),
-          Icon(Icons.arrow_upward, size: 14, color: scheme.onSurfaceVariant),
+          Icon(Icons.arrow_upward, size: 14, color: scheme.primary),
           const SizedBox(width: 2),
-          Text(_fmt(up), style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(width: 12),
-          Icon(Icons.arrow_downward, size: 14, color: scheme.onSurfaceVariant),
+          Text(
+            _fmt(up),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(width: 14),
+          Icon(Icons.arrow_downward, size: 14, color: Colors.blue.shade600),
           const SizedBox(width: 2),
-          Text(_fmt(down), style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            _fmt(down),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );
