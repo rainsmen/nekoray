@@ -3,7 +3,6 @@
 // directly selected, toggled, and customized.
 
 import 'dart:convert';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -1282,8 +1281,6 @@ class _EditRuleDialogState extends State<_EditRuleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
     return AlertDialog(
       title: Text(widget.existingRule == null
           ? I18n.t('addCustomRule')

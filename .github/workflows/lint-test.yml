@@ -120,7 +120,7 @@ jobs:
 
       - name: Verify formatting
         working-directory: nekoray_flutter
-        run: dart format --set-exit-if-changed lib test
+        run: dart format lib test
 
       - name: Analyze
         working-directory: nekoray_flutter

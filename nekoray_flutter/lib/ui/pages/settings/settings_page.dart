@@ -351,14 +351,14 @@ class SettingsPage extends ConsumerWidget {
         return;
       }
 
-      if (resp.hasUpdate) {
+      if (resp.downloadUrl.isNotEmpty) {
         showDialog<void>(
           context: context,
           builder: (dialogCtx) => AlertDialog(
-            title: Text('New Version Available: ${resp.version}'),
+            title: Text('New Version Available: ${resp.assetsName}'),
             content: SingleChildScrollView(
-              child: Text(resp.releaseNotes.isNotEmpty
-                  ? resp.releaseNotes
+              child: Text(resp.releaseNote.isNotEmpty
+                  ? resp.releaseNote
                   : 'A newer version is available. Download update?'),
             ),
             actions: [
