@@ -12,7 +12,7 @@ on:
         default: true
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   # Must match the `go` directive in the module files.
