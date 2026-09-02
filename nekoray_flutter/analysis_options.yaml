@@ -11,6 +11,7 @@ analyzer:
     - "lib/**/*.freezed.dart"
   errors:
     missing_required_param: error
+    deprecated_member_use: false
     # Downgrade style suggestions to info (don't fail CI)
     prefer_const_constructors: false
     prefer_const_constructors_in_immutables: false

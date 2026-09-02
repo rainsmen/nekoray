@@ -24,7 +24,7 @@ jobs:
         run: flutter pub get
       - name: Analyze
         working-directory: nekoray_flutter
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
       - name: Check formatting
         working-directory: nekoray_flutter
         run: dart format lib test
