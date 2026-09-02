@@ -289,16 +289,21 @@ class SettingsPage extends ConsumerWidget {
                   ),
                 ),
                 const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.new_releases_outlined),
+                  title: const Text('Check Pre-Releases (测试版更新)'),
+                  subtitle: const Text('Receive preview and beta updates'),
+                  value: settings.checkPreRelease,
+                  onChanged: (v) =>
+                      ref.read(settingsProvider.notifier).setCheckPreRelease(v),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.system_update_alt),
                   title: Text(t('checkUpdates')),
-                  subtitle: const Text('v5.0.0-beta.11 · sing-box 1.13.19'),
+                  subtitle: const Text('v5.0.0-beta.13 · sing-box 1.13.19'),
                   trailing: OutlinedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Checking for updates...')),
-                      );
-                    },
+                    onPressed: () => _checkUpdates(context, ref),
                     child: Text(t('checkUpdates')),
                   ),
                 ),
@@ -319,6 +324,100 @@ class SettingsPage extends ConsumerWidget {
         return I18n.t('themeLight');
       default:
         return I18n.t('themeSystem');
+    }
+  }
+
+  Future<void> _checkUpdates(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Checking for updates...')),
+    );
+
+    try {
+      final client = ref.read(grpcClientProvider);
+      final settings = ref.read(settingsProvider);
+      final sessionId = client.newUpdateSessionId();
+      final resp = await client.checkForUpdates(
+        sessionId: sessionId,
+        includePreRelease: settings.checkPreRelease,
+      );
+
+      if (!context.mounted) return;
+
+      if (resp.error.isNotEmpty) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Update check error: ${resp.error}'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      if (resp.hasUpdate) {
+        showDialog<void>(
+          context: context,
+          builder: (dialogCtx) => AlertDialog(
+            title: Text('New Version Available: ${resp.version}'),
+            content: SingleChildScrollView(
+              child: Text(resp.releaseNotes.isNotEmpty
+                  ? resp.releaseNotes
+                  : 'A newer version is available. Download update?'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: Text(I18n.t('cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  _performDownloadUpdate(context, ref, sessionId);
+                },
+                child: const Text('Download Update'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('You are already using the latest version.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Failed to check updates: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _performDownloadUpdate(
+      BuildContext context, WidgetRef ref, String sessionId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Downloading update package in background...')),
+    );
+    try {
+      final client = ref.read(grpcClientProvider);
+      final resp = await client.downloadUpdate(sessionId: sessionId);
+      if (!context.mounted) return;
+      if (resp.error.isNotEmpty) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Download failed: ${resp.error}'), backgroundColor: Colors.red),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Update downloaded. Restart application or run updater to apply.'),
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Update download error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

@@ -1,5 +1,47 @@
 # Changelog
 
+## v5.0.0-beta.13 — Executable Launcher Fix, macOS Updater, Hot Switch Fix, Real Rule-Set Sync & CI Hardening (2026-09-03)
+
+### Critical Bug Fixes & System Stability
+- **Launcher & Updater Target Executable Correction (启动器与更新后重启修复)**:
+  - Fixed hardcoded `./nekobox` and `./nekobox.exe` targets in `go/cmd/updater/launcher_linux.go` and `go/cmd/updater/main.go`, changing them to `./nekoray` and `./nekoray.exe`.
+  - Fixed Linux `./launcher` crashing on startup and enabled automatic application restart after self-updating on Windows and Linux.
+- **macOS Self-Updating & App Bundle Transactional Replacement (macOS 自动更新支持)**:
+  - Added support in `go/cmd/updater/updater.go` for `nekoray.app` payload detection and transactional directory replacement with automatic rollback.
+  - Added native `.app` bundle launch using `open ./nekoray.app` on macOS.
+- **Dashboard Hot-Switch Node Logic Fix (仪表盘节点热切换修复)**:
+  - Resolved logic defect where switching an active node from the Dashboard bottom sheet falsely stopped the proxy service.
+  - Refactored `_toggleService` into decoupled `_startService` and `_stopService`, seamlessly switching nodes without service interruption.
+- **Real Rule-Set Binary Synchronization via gRPC (规则集真实更新)**:
+  - Replaced mock `Dio.head()` placeholder in `RoutingPage` with genuine gRPC `updateRuleSet()` calls, downloading and caching `.srs` rule-set binaries in the core.
+- **End-to-End In-App Update Checker & Pre-Release Switch (应用内检查更新完整闭环)**:
+  - Connected `checkForUpdates` and `downloadUpdate` gRPC calls with interactive update notification dialogs.
+  - Added "Check Pre-Releases" toggle switch in Settings.
+- **Proxy-Aware Website Latency & Connectivity Testing (测速走本地代理)**:
+  - Configured `Dio` with `IOHttpClientAdapter` routing through `127.0.0.1:mixedPort` when proxy is active, ensuring authentic proxy latency measurements in restricted network environments.
+- **System Proxy Leak Fix on Exit & Service Stop (系统代理自动清理)**:
+  - Added automatic system proxy de-registration on application quit (`_quit()`) and when proxy core stops, eliminating host internet disconnection after proxy shutdown.
+- **Argv Auth Token Leak Remediation (进程列表鉴权安全加固)**:
+  - Removed plaintext `--token` from command-line arguments in `core_process.dart`, preserving secure environment variable-only authentication via `NEKORAY_AUTH_TOKEN`.
+- **Flutter Material Localizations Delegates & Clean Codebase (本地化与工程规范)**:
+  - Added `GlobalMaterialLocalizations` and `supportedLocales` in `MaterialApp` for native context menu and widget localization.
+  - Removed lingering empty directories (`lib/models`, `lib/app/modules`, `lib/screens`).
+  - Added macOS Intel (`macos-amd64`) packaging in release workflow and enabled strict `--set-exit-if-changed` and `gofmt` CI gates.
+
+## v5.0.0-beta.12 — Karing-Style Routing Engine, Armwall Dashboard, Config Backup & Restore (2026-08-25)
+
+### New Features & Enhancements
+- **Karing-Inspired Routing Engine (Karing 风格规则分类与预设)**:
+  - Added preset routing profiles (Bypass Mainland & Ads, Proxy All, Direct All).
+  - Domain, IP CIDR, and Protocol rule filters with custom outbound routing (Direct, Proxy, Block).
+- **Armwall Dashboard & Traffic Monitor (全新仪表盘)**:
+  - Integrated real-time uplink/downlink throughput graph with `fl_chart`.
+  - Node quick selector, speed test matrix, and active status badges.
+- **Config Backup & Restore (配置备份与恢复)**:
+  - Complete JSON configuration export, import, and reset to defaults from Settings page.
+- **Light Theme Contrast & Auto-Start Fixes**:
+  - Improved readability in light theme and fixed Windows auto-start registry creation.
+
 ## v5.0.0-beta.11 — Bundled libcronet for NaiveProxy & Live Startup Logs Capture (2026-08-24)
 
 ### Critical Bug Fixes & Diagnostics Enhancements

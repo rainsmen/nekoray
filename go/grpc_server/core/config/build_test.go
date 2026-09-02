@@ -26,21 +26,21 @@ func TestBuildVMessConfig(t *testing.T) {
 	beanBytes, _ := json.Marshal(bean)
 
 	ent := &nekokfmt.ProxyEntity{
-		Type:    "vmess",
-		Id:      1,
-		Gid:     1,
-		Bean:    beanBytes,
+		Type: "vmess",
+		Id:   1,
+		Gid:  1,
+		Bean: beanBytes,
 	}
 	routing := &nekokfmt.Routing{
-		DefOutbound: "proxy",
+		DefOutbound:  "proxy",
 		SniffingMode: nekokfmt.SniffingModeForRouting,
 	}
 	ds := &nekokfmt.DataStore{
-		InboundAddress:    "127.0.0.1",
-		InboundSocksPort:  2080,
-		LogLevel:          "info",
-		MuxConcurrency:    0,
-		CoreBoxClashAPI:   0,
+		InboundAddress:       "127.0.0.1",
+		InboundSocksPort:     2080,
+		LogLevel:             "info",
+		MuxConcurrency:       0,
+		CoreBoxClashAPI:      0,
 		CoreBoxUnderlyingDNS: "local",
 	}
 
@@ -171,9 +171,9 @@ func TestBuildNaiveOutbound(t *testing.T) {
 			ServerPort:    443,
 			Name:          "naive-test",
 		},
-		Username:    "user1",
-		Password:    "pass1",
-		Sni:         "naive.example.com",
+		Username:      "user1",
+		Password:      "pass1",
+		Sni:           "naive.example.com",
 		AllowInsecure: false,
 	}
 	out, err := BuildOutboundSingBox(bean)
@@ -202,8 +202,8 @@ func TestBuildAnyTLSOutbound(t *testing.T) {
 			ServerPort:    443,
 			Name:          "anytls-test",
 		},
-		Password:    "secret",
-		Sni:         "anytls.example.com",
+		Password:       "secret",
+		Sni:            "anytls.example.com",
 		MinIdleSession: 5,
 	}
 	out, err := BuildOutboundSingBox(bean)
@@ -250,13 +250,13 @@ func TestBuildWireGuardOutbound(t *testing.T) {
 			ServerPort:    51820,
 			Name:          "wg-test",
 		},
-		PrivateKey:      "abc123",
-		Address:         "10.0.0.2/32",
-		MTU:             1280,
-		PeerPublicKey:   "pubkey",
-		PeerAllowedIPs:  "0.0.0.0/0,::/0",
-		PeerKeepAlive:   25,
-		PeerReserved:    "0,0,0",
+		PrivateKey:     "abc123",
+		Address:        "10.0.0.2/32",
+		MTU:            1280,
+		PeerPublicKey:  "pubkey",
+		PeerAllowedIPs: "0.0.0.0/0,::/0",
+		PeerKeepAlive:  25,
+		PeerReserved:   "0,0,0",
 	}
 	out, err := BuildOutboundSingBox(bean)
 	if err != nil {

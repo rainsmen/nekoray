@@ -153,4 +153,3 @@ func TestRegisterConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
-

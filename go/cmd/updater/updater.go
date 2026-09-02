@@ -65,8 +65,18 @@ func runUpdater() error {
 	// The archive is considered valid only when it contains the payload that
 	// Mv below expects. This check must precede any destructive cleanup.
 	payload := filepath.Join(stagingDir, "nekoray")
+	dest := "."
 	if !Exist(payload) {
-		return fmt.Errorf("update package has no nekoray payload")
+		appPayload := filepath.Join(stagingDir, "nekoray.app")
+		if Exist(appPayload) {
+			payload = stagingDir
+			wd, _ := os.Getwd()
+			if strings.Contains(wd, ".app/Contents/MacOS") {
+				dest = filepath.Dir(filepath.Dir(filepath.Dir(wd)))
+			}
+		} else {
+			return fmt.Errorf("update package has no nekoray or nekoray.app payload")
+		}
 	}
 
 	// Replace the installation transactionally. Existing top-level entries are
@@ -74,7 +84,7 @@ func runUpdater() error {
 	// installed. If a later rename fails, the already-installed entries are
 	// removed and the backup is restored, so a partial update cannot strand the
 	// application in a mixed old/new state.
-	if err := replacePayload(payload, ".", runtime.GOOS == "linux"); err != nil {
+	if err := replacePayload(payload, dest, runtime.GOOS == "linux"); err != nil {
 		return fmt.Errorf("update payload replacement failed: %w", err)
 	}
 	stagingOwned = false

@@ -12,6 +12,7 @@ import '../../../core/models/profile.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
+import '../../../core/system/system_integration.dart';
 import '../../pages/connections/connections_page.dart';
 import '../../pages/dns/dns_page.dart';
 import '../../pages/logs/logs_page.dart';
@@ -419,6 +420,11 @@ class _ProfilesTab extends ConsumerWidget {
   Future<void> _stop(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
+      if (ref.read(settingsProvider).systemProxy) {
+        try {
+          await SystemIntegration.disableSystemProxy();
+        } catch (_) {}
+      }
       await ref.read(grpcClientProvider).stopCore();
       ref.read(connectedProfileProvider.notifier).state = 0;
       ref.read(coreLogProvider.notifier).add('[INFO] Proxy stopped');
@@ -481,6 +487,18 @@ class _ProfilesTab extends ConsumerWidget {
       final startResp =
           await client.startCore(resp.coreConfig, enableConnections: true);
       if (startResp.error.isNotEmpty) throw Exception(startResp.error);
+
+      if (settings.systemProxy) {
+        try {
+          await SystemIntegration.enableSystemProxy(
+            host: settings.listenAddress,
+            port: settings.mixedPort,
+          );
+        } catch (e) {
+          ref.read(coreLogProvider.notifier).add(
+              '[WARN] Could not enable system proxy: $e');
+        }
+      }
 
       ref.read(connectedProfileProvider.notifier).state = profile.id;
       ref.read(coreLogProvider.notifier).add('[INFO] Proxy successfully started for $profileName');

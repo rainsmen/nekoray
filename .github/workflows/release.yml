@@ -65,6 +65,10 @@ jobs:
             target: macos
             package_target: macos-arm64
             core_artifact: core-darwin-arm64
+          - platform: macos-13
+            target: macos
+            package_target: macos-amd64
+            core_artifact: core-darwin-amd64
       fail-fast: false
     runs-on: ${{ matrix.platform }}
     needs: build-go-core
@@ -237,7 +241,8 @@ jobs:
           |---|---|
           | Windows | `nekoray-*-windows64.zip` |
           | Linux | `nekoray-*-linux64.tar.gz` |
-          | macOS | `nekoray-*-macos*.zip` |
+          | macOS Apple Silicon | `nekoray-*-macos-arm64.zip` |
+          | macOS Intel | `nekoray-*-macos-amd64.zip` |
           | Android arm64 | `nekoray-*-android-arm64-v8a.apk` |
           | Android armv7 | `nekoray-*-android-armeabi-v7a.apk` |
           | Android x86_64 | `nekoray-*-android-x86_64.apk` |

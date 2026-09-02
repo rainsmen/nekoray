@@ -2,12 +2,12 @@ name: Build Flutter
 
 on:
   push:
-    branches: [dev, feature/flutter, feature/flutter-grpc]
+    branches: [main, dev, feature/flutter, feature/flutter-grpc]
     paths:
       - 'nekoray_flutter/**'
       - 'go/**'
   pull_request:
-    branches: [dev]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
         run: flutter analyze
       - name: Check formatting
         working-directory: nekoray_flutter
-        run: dart format lib test
+        run: dart format --set-exit-if-changed lib test
 
   test:
     runs-on: ubuntu-latest
@@ -93,7 +93,8 @@ jobs:
         with:
           name: nekoray-flutter-${{ matrix.target }}
           path: |
-            nekoray_flutter/build/linux/*/bundle/bundle
+            nekoray_flutter/build/linux/*/bundle
+            nekoray_flutter/build/linux/*/release/bundle
             nekoray_flutter/build/windows/x64/runner/Release
             nekoray_flutter/build/macos/Build/Products/Release
           retention-days: 14

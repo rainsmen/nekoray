@@ -17,7 +17,7 @@ func Launcher() {
 	_debug := flag.Bool("debug", false, "Debug mode")
 	flag.Parse()
 
-	cmd := exec.Command("./nekobox", flag.Args()...)
+	cmd := exec.Command("./nekoray", flag.Args()...)
 
 	ldEnv := "LD_LIBRARY_PATH=" + filepath.Join(wd, "./lib")
 
@@ -29,11 +29,11 @@ func Launcher() {
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
 		if err := cmd.Run(); err != nil {
-			log.Println("nekobox exited:", err)
+			log.Println("nekoray exited:", err)
 		}
 		return
 	}
 	if err := cmd.Start(); err != nil {
-		log.Println("failed to start nekobox:", err)
+		log.Println("failed to start nekoray:", err)
 	}
 }

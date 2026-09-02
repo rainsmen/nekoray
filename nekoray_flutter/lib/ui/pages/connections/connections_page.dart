@@ -4,7 +4,9 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -256,6 +258,19 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
         },
       ));
 
+      final isRunning = ref.read(connectedProfileProvider) > 0;
+      final settings = ref.read(settingsProvider);
+      if (isRunning && settings.mixedPort > 0) {
+        dio.httpClientAdapter = IOHttpClientAdapter(
+          createHttpClient: () {
+            final client = HttpClient();
+            client.findProxy = (uri) => 'PROXY 127.0.0.1:${settings.mixedPort}';
+            client.badCertificateCallback = (cert, host, port) => true;
+            return client;
+          },
+        );
+      }
+
       final resp = await dio.get(site.url);
       stopwatch.stop();
 
@@ -294,103 +309,126 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
     }
   }
 
+  Future<void> _stopService() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isStartingOrStopping = true);
+    try {
+      if (ref.read(settingsProvider).systemProxy) {
+        try {
+          await SystemIntegration.disableSystemProxy();
+        } catch (_) {}
+      }
+      await ref.read(grpcClientProvider).stopCore();
+      ref.read(connectedProfileProvider.notifier).state = 0;
+      ref.read(coreLogProvider.notifier).add('[INFO] Proxy stopped via Dashboard');
+      messenger.showSnackBar(SnackBar(content: Text(I18n.t('stop'))));
+    } catch (e) {
+      ref.read(coreLogProvider.notifier).add('[ERROR] Failed to stop proxy: $e');
+      messenger.showSnackBar(SnackBar(
+        content: Text('${I18n.t("stop")} failed: $e'),
+        backgroundColor: Colors.red,
+      ));
+    } finally {
+      if (mounted) setState(() => _isStartingOrStopping = false);
+    }
+  }
+
+  Future<void> _startService(ProxyEntity? activeProfile) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (activeProfile == null) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(I18n.t('noActiveNode')),
+        backgroundColor: Colors.orange,
+      ));
+      _openNodeSelector(context);
+      return;
+    }
+
+    setState(() => _isStartingOrStopping = true);
+    final settings = ref.read(settingsProvider);
+    final profileName =
+        activeProfile.name.isEmpty ? activeProfile.address : activeProfile.name;
+
+    try {
+      ref.read(coreLogProvider.notifier).add(
+          '[INFO] Starting proxy for node: $profileName (${activeProfile.type})');
+      final connectError =
+          await ensureConnected(ref, requestedPort: settings.corePort);
+      if (connectError != null) throw Exception(connectError);
+
+      final client = ref.read(grpcClientProvider);
+      await client.stopCore();
+      ref.read(connectedProfileProvider.notifier).state = 0;
+
+      final routingRaw = await LocalStore.loadRouting('default') ?? {};
+      final routing = RoutingConfig.fromJson(routingRaw);
+      final grpcRouting = toGrpcRouting(routing);
+
+      final datastore = {
+        'inbound_socks_port': settings.mixedPort,
+        'inbound_address': settings.listenAddress,
+        'spmode_vpn': settings.tunMode,
+        'vpn_internal_tun': settings.tunMode,
+        'spmode_system_proxy': settings.systemProxy,
+        'log_level': settings.logLevel,
+      };
+
+      final groups = ref.read(groupListProvider).valueOrNull ?? const [];
+      final activeGroup = groups.firstWhere(
+        (g) => g.id == activeProfile.gid,
+        orElse: () => ProfileGroup(id: 0),
+      );
+
+      final resp = await client.buildConfig(BuildConfigReq(
+        profileJson: utf8.encode(jsonEncode(activeProfile.toJson())),
+        groupJson: utf8.encode(jsonEncode(activeGroup.toJson())),
+        routingJson: utf8.encode(jsonEncode(grpcRouting)),
+        datastoreJson: utf8.encode(jsonEncode(datastore)),
+        forTest: false,
+        forExport: false,
+      ));
+      if (resp.error.isNotEmpty) throw Exception(resp.error);
+
+      final startResp =
+          await client.startCore(resp.coreConfig, enableConnections: true);
+      if (startResp.error.isNotEmpty) throw Exception(startResp.error);
+
+      if (settings.systemProxy) {
+        try {
+          await SystemIntegration.enableSystemProxy(
+            host: settings.listenAddress,
+            port: settings.mixedPort,
+          );
+        } catch (e) {
+          ref.read(coreLogProvider.notifier).add(
+              '[WARN] Could not enable system proxy: $e');
+        }
+      }
+
+      ref.read(connectedProfileProvider.notifier).state = activeProfile.id;
+      ref.read(coreLogProvider.notifier).add(
+          '[INFO] Proxy successfully started for $profileName');
+      messenger.showSnackBar(SnackBar(
+          content: Text('${I18n.t("connected")}: $profileName')));
+    } catch (e) {
+      ref.read(connectedProfileProvider.notifier).state = 0;
+      ref.read(coreLogProvider.notifier).add(
+          '[ERROR] Failed to start $profileName: $e');
+      messenger.showSnackBar(SnackBar(
+        content: Text('${I18n.t("start")} failed: $e'),
+        backgroundColor: Colors.red,
+      ));
+    } finally {
+      if (mounted) setState(() => _isStartingOrStopping = false);
+    }
+  }
+
   Future<void> _toggleService(ProxyEntity? activeProfile) async {
     final connectedId = ref.read(connectedProfileProvider);
-    final messenger = ScaffoldMessenger.of(context);
-
     if (connectedId > 0) {
-      // Stop service
-      setState(() => _isStartingOrStopping = true);
-      try {
-        await ref.read(grpcClientProvider).stopCore();
-        ref.read(connectedProfileProvider.notifier).state = 0;
-        ref.read(coreLogProvider.notifier).add('[INFO] Proxy stopped via Dashboard');
-        messenger.showSnackBar(SnackBar(content: Text(I18n.t('stop'))));
-      } catch (e) {
-        ref.read(coreLogProvider.notifier).add('[ERROR] Failed to stop proxy: $e');
-        messenger.showSnackBar(SnackBar(
-          content: Text('${I18n.t("stop")} failed: $e'),
-          backgroundColor: Colors.red,
-        ));
-      } finally {
-        if (mounted) setState(() => _isStartingOrStopping = false);
-      }
+      await _stopService();
     } else {
-      // Start service
-      if (activeProfile == null) {
-        messenger.showSnackBar(SnackBar(
-          content: Text(I18n.t('noActiveNode')),
-          backgroundColor: Colors.orange,
-        ));
-        _openNodeSelector(context);
-        return;
-      }
-
-      setState(() => _isStartingOrStopping = true);
-      final settings = ref.read(settingsProvider);
-      final profileName =
-          activeProfile.name.isEmpty ? activeProfile.address : activeProfile.name;
-
-      try {
-        ref.read(coreLogProvider.notifier).add(
-            '[INFO] Starting proxy for node: $profileName (${activeProfile.type})');
-        final connectError =
-            await ensureConnected(ref, requestedPort: settings.corePort);
-        if (connectError != null) throw Exception(connectError);
-
-        final client = ref.read(grpcClientProvider);
-        await client.stopCore();
-        ref.read(connectedProfileProvider.notifier).state = 0;
-
-        final routingRaw = await LocalStore.loadRouting('default') ?? {};
-        final routing = RoutingConfig.fromJson(routingRaw);
-        final grpcRouting = toGrpcRouting(routing);
-
-        final datastore = {
-          'inbound_socks_port': settings.mixedPort,
-          'inbound_address': settings.listenAddress,
-          'spmode_vpn': settings.tunMode,
-          'vpn_internal_tun': settings.tunMode,
-          'spmode_system_proxy': settings.systemProxy,
-          'log_level': settings.logLevel,
-        };
-
-        final groups = ref.read(groupListProvider).valueOrNull ?? const [];
-        final activeGroup = groups.firstWhere(
-          (g) => g.id == activeProfile.gid,
-          orElse: () => ProfileGroup(id: 0),
-        );
-
-        final resp = await client.buildConfig(BuildConfigReq(
-          profileJson: utf8.encode(jsonEncode(activeProfile.toJson())),
-          groupJson: utf8.encode(jsonEncode(activeGroup.toJson())),
-          routingJson: utf8.encode(jsonEncode(grpcRouting)),
-          datastoreJson: utf8.encode(jsonEncode(datastore)),
-          forTest: false,
-          forExport: false,
-        ));
-        if (resp.error.isNotEmpty) throw Exception(resp.error);
-
-        final startResp =
-            await client.startCore(resp.coreConfig, enableConnections: true);
-        if (startResp.error.isNotEmpty) throw Exception(startResp.error);
-
-        ref.read(connectedProfileProvider.notifier).state = activeProfile.id;
-        ref.read(coreLogProvider.notifier).add(
-            '[INFO] Proxy successfully started for $profileName');
-        messenger.showSnackBar(SnackBar(
-            content: Text('${I18n.t("connected")}: $profileName')));
-      } catch (e) {
-        ref.read(connectedProfileProvider.notifier).state = 0;
-        ref.read(coreLogProvider.notifier).add(
-            '[ERROR] Failed to start $profileName: $e');
-        messenger.showSnackBar(SnackBar(
-          content: Text('${I18n.t("start")} failed: $e'),
-          backgroundColor: Colors.red,
-        ));
-      } finally {
-        if (mounted) setState(() => _isStartingOrStopping = false);
-      }
+      await _startService(activeProfile);
     }
   }
 
@@ -405,10 +443,11 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
         onSelect: (selected) async {
           Navigator.pop(ctx);
           final isRunning = ref.read(connectedProfileProvider) > 0;
-          ref.read(connectedProfileProvider.notifier).state = selected.id;
           if (isRunning) {
             // Hot switch node
-            await _toggleService(selected);
+            await _startService(selected);
+          } else {
+            ref.read(connectedProfileProvider.notifier).state = selected.id;
           }
         },
       ),

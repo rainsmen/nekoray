@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"grpc_server/gen"
 	"grpc_server/core/ruleset"
+	"grpc_server/gen"
 )
 
 // ruleSetMgr is the process-wide rule_set cache manager.

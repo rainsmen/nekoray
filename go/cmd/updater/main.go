@@ -32,13 +32,22 @@ func main() {
 				time.Sleep(time.Second)
 				Updater()
 				// 3. start
-				start("./nekobox.exe")
+				start("./nekoray.exe")
 			} else {
 				// 1. main prog quit and run "updater.exe"
 				if err := Copy("./updater.exe", "./updater.old"); err != nil {
 					log.Fatalln("stage updater:", err)
 				}
 				start("./updater.old", os.Args[1:]...)
+			}
+		} else if runtime.GOOS == "darwin" {
+			// 1. update files
+			Updater()
+			// 2. start
+			if Exist("./nekoray.app") {
+				start("open", "./nekoray.app")
+			} else {
+				start("./nekoray")
 			}
 		} else {
 			// 1. update files
@@ -47,7 +56,7 @@ func main() {
 			if os.Getenv("NKR_FROM_LAUNCHER") == "1" {
 				Launcher()
 			} else {
-				start("./nekobox")
+				start("./nekoray")
 			}
 		}
 		return

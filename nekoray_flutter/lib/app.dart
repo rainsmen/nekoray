@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -8,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/grpc/grpc_provider.dart';
 import 'core/i18n.dart';
 import 'core/state/settings.dart';
+import 'core/system/system_integration.dart';
 import 'ui/pages/home/home_page.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -91,6 +93,13 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
 
   Future<void> _quit() async {
     try {
+      if (ref.read(settingsProvider).systemProxy) {
+        await SystemIntegration.disableSystemProxy();
+      }
+    } catch (_) {
+      // Ignore cleanup error on exit
+    }
+    try {
       await disconnectFromCore(ref);
     } catch (_) {
       // Shutting down anyway.
@@ -117,6 +126,13 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
     return MaterialApp(
       title: 'NekoRay',
       debugShowCheckedModeBanner: false,
+      locale: Locale(settings.locale),
+      supportedLocales: const [Locale('zh'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,

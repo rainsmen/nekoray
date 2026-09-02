@@ -9,9 +9,9 @@ func TestDecodeB64IfValidRejectsPlainText(t *testing.T) {
 	plain := []string{
 		"password",
 		"shadowsocks",
-		"hello world",       // space is outside the alphabet
-		"vmess://abc",       // ':' and '/' mix
-		"abc",               // too short to be meaningful
+		"hello world", // space is outside the alphabet
+		"vmess://abc", // ':' and '/' mix
+		"abc",         // too short to be meaningful
 		"",
 		"not@base64!",
 	}
@@ -25,9 +25,9 @@ func TestDecodeB64IfValidRejectsPlainText(t *testing.T) {
 func TestDecodeB64IfValidDecodesRealBase64(t *testing.T) {
 	cases := map[string]string{
 		// "ss://example" in std and url-safe encodings
-		"c3M6Ly9leGFtcGxl":     "ss://example",
-		"c3M6Ly9leGFtcGxl==":   "ss://example",
-		"aGVsbG8gd29ybGQ=":     "hello world",
+		"c3M6Ly9leGFtcGxl":   "ss://example",
+		"c3M6Ly9leGFtcGxl==": "ss://example",
+		"aGVsbG8gd29ybGQ=":   "hello world",
 	}
 	for in, want := range cases {
 		if got := decodeB64IfValid(in); got != want {

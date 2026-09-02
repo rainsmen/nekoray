@@ -101,8 +101,6 @@ class CoreProcess {
       'nekobox',
       '--port',
       requestedPort.toString(),
-      '--token',
-      token,
       if (debug) '--debug',
     ];
 

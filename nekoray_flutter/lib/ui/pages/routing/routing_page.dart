@@ -7,6 +7,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/grpc/generated/libcore.pb.dart';
+import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/storage/local_store.dart';
@@ -408,14 +410,14 @@ class RuleSetItem {
   });
 }
 
-class RoutingPage extends StatefulWidget {
+class RoutingPage extends ConsumerStatefulWidget {
   const RoutingPage({super.key});
 
   @override
-  State<RoutingPage> createState() => _RoutingPageState();
+  ConsumerState<RoutingPage> createState() => _RoutingPageState();
 }
 
-class _RoutingPageState extends State<RoutingPage>
+class _RoutingPageState extends ConsumerState<RoutingPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -520,11 +522,16 @@ class _RoutingPageState extends State<RoutingPage>
     });
 
     try {
-      final dio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 15),
+      final client = ref.read(grpcClientProvider);
+      final resp = await client.updateRuleSet(UpdateRuleSetReq(
+        tag: item.tag,
+        format: 'binary',
+        url: item.url,
+        download: true,
       ));
-      await dio.head(item.url);
+      if (resp.error.isNotEmpty) {
+        throw Exception(resp.error);
+      }
       if (mounted) {
         setState(() {
           item.isUpdating = false;

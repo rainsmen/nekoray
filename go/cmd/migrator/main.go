@@ -8,7 +8,8 @@
 // and reports.
 //
 // Usage:
-//   migrator -src ~/.config/nekoray/ -dst ./new_config/ [-dry-run]
+//
+//	migrator -src ~/.config/nekoray/ -dst ./new_config/ [-dry-run]
 package main
 
 import (
@@ -36,9 +37,9 @@ func main() {
 
 	stats := struct {
 		profiles int
-		groups    int
-		routing   int
-		skipped   int
+		groups   int
+		routing  int
+		skipped  int
 	}{}
 
 	// migrate profiles

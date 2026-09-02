@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	nekokfmt "grpc_server/core/fmt"
 	"gopkg.in/yaml.v3"
+	nekokfmt "grpc_server/core/fmt"
 )
 
 // parseClash parses a Clash YAML subscription.
@@ -232,17 +232,17 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 				ServerAddress: server,
 				ServerPort:    port,
 			},
-			ProxyType:        nekokfmt.QUICProxyTUIC,
-			Uuid:             nodeStr(proxy["uuid"]),
-			Password:         nodeStr(proxy["password"]),
-			UdpRelayMode:    firstOrSecond(nodeStr(proxy["udp-relay-mode"]), "native"),
+			ProxyType:         nekokfmt.QUICProxyTUIC,
+			Uuid:              nodeStr(proxy["uuid"]),
+			Password:          nodeStr(proxy["password"]),
+			UdpRelayMode:      firstOrSecond(nodeStr(proxy["udp-relay-mode"]), "native"),
 			CongestionControl: firstOrSecond(nodeStr(proxy["congestion-controller"]), "bbr"),
-			DisableSni:       nodeBool(proxy["disable-sni"]),
-			ZeroRttHandshake: nodeBool(proxy["reduce-rtt"]),
-			AllowInsecure:    nodeBool(proxy["skip-cert-verify"]),
-			Alpn:             joinStrList(proxy["alpn"], ","),
-			CaText:           nodeStr(proxy["ca-str"]),
-			Sni:              nodeStr(proxy["sni"]),
+			DisableSni:        nodeBool(proxy["disable-sni"]),
+			ZeroRttHandshake:  nodeBool(proxy["reduce-rtt"]),
+			AllowInsecure:     nodeBool(proxy["skip-cert-verify"]),
+			Alpn:              joinStrList(proxy["alpn"], ","),
+			CaText:            nodeStr(proxy["ca-str"]),
+			Sni:               nodeStr(proxy["sni"]),
 		}
 		if nodeBool(proxy["udp-over-stream"]) {
 			bean.Uos = true
@@ -262,9 +262,9 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 				ServerAddress: server,
 				ServerPort:    port,
 			},
-			Username: nodeStr(proxy["username"]),
-			Password: nodeStr(proxy["password"]),
-			Sni:      nodeStr(proxy["sni"]),
+			Username:      nodeStr(proxy["username"]),
+			Password:      nodeStr(proxy["password"]),
+			Sni:           nodeStr(proxy["sni"]),
 			AllowInsecure: nodeBool(proxy["skip-cert-verify"]),
 		}
 		return ParseResult{Profile: newEntity("naive", bean)}
@@ -276,8 +276,8 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 				ServerAddress: server,
 				ServerPort:    port,
 			},
-			Password: nodeStr(proxy["password"]),
-			Sni:      nodeStr(proxy["sni"]),
+			Password:      nodeStr(proxy["password"]),
+			Sni:           nodeStr(proxy["sni"]),
 			AllowInsecure: nodeBool(proxy["skip-cert-verify"]),
 		}
 		if v := proxy["min-idle-session"]; v != nil {
@@ -295,7 +295,7 @@ func parseClashProxy(proxy map[string]interface{}) ParseResult {
 				ServerAddress: server,
 				ServerPort:    port,
 			},
-			User: nodeStr(proxy["username"]),
+			User:     nodeStr(proxy["username"]),
 			Password: nodeStr(proxy["password"]),
 		}
 		if s := nodeStr(proxy["client-version"]); s != "" {

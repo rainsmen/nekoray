@@ -45,8 +45,8 @@ const maxUpdateSessions = 32
 const updateSessionTTL = 15 * time.Minute
 
 // CurrentVersion is the version string used for update checking.
-// It is set by the core on startup via SetVersion.
-var CurrentVersion = "5.0.0-beta.12"
+// Set via SetVersion from nekobox_core main, but defaults to a compile-time string.
+var CurrentVersion = "5.0.0-beta.13"
 
 // maxUpdateBytes caps a downloaded update package (512 MiB).
 const maxUpdateBytes = 512 << 20

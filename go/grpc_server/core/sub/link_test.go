@@ -210,8 +210,8 @@ func TestGenerateVLESSLink(t *testing.T) {
 			Network:  "ws",
 			Security: "tls",
 			Sni:      "example.com",
-			Path:      "/ws",
-			Host:      "example.com",
+			Path:     "/ws",
+			Host:     "example.com",
 		},
 	}
 	ent := newEntity("vless", bean)
