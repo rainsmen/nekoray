@@ -30,13 +30,13 @@ mkdir -p "$STAGING/nekoray"
 case "$TARGET" in
   linux)   FLUTTER_OUT="nekoray_flutter/build/linux/x64/release/bundle" ;;
   windows) FLUTTER_OUT="nekoray_flutter/build/windows/x64/runner/Release" ;;
-  macos|macos-arm64) FLUTTER_OUT="nekoray_flutter/build/macos/Build/Products/Release" ;;
+  macos|macos-arm64|macos-amd64) FLUTTER_OUT="nekoray_flutter/build/macos/Build/Products/Release" ;;
   *)       die "unknown target: $TARGET" ;;
 esac
 
 [ -d "$FLUTTER_OUT" ] || die "Flutter build output not found at $FLUTTER_OUT"
 
-if [[ "$TARGET" == macos || "$TARGET" == macos-arm64 ]]; then
+if [[ "$TARGET" == macos* ]]; then
   [ -d "$FLUTTER_OUT/nekoray.app" ] || die "nekoray.app not found in $FLUTTER_OUT"
   cp -R "$FLUTTER_OUT/nekoray.app" "$STAGING/"
 else
@@ -47,14 +47,14 @@ fi
 case "$TARGET" in
   linux)   CORE_DIR="deployment/linux64";     CORE_BIN="nekobox_core" ;;
   windows) CORE_DIR="deployment/windows64";   CORE_BIN="nekobox_core.exe" ;;
-  macos)       CORE_DIR="deployment/macos-amd64"; CORE_BIN="nekobox_core" ;;
-  macos-arm64) CORE_DIR="deployment/macos-arm64"; CORE_BIN="nekobox_core" ;;
+  macos|macos-amd64) CORE_DIR="deployment/macos-amd64"; CORE_BIN="nekobox_core" ;;
+  macos-arm64)       CORE_DIR="deployment/macos-arm64"; CORE_BIN="nekobox_core" ;;
 esac
 
 [ -d "$CORE_DIR" ] || die "core output directory $CORE_DIR is missing — did build_go.sh run?"
 [ -f "$CORE_DIR/$CORE_BIN" ] || die "core binary $CORE_DIR/$CORE_BIN is missing"
 
-if [[ "$TARGET" == macos || "$TARGET" == macos-arm64 ]]; then
+if [[ "$TARGET" == macos* ]]; then
   CORE_DEST="$STAGING/nekoray.app/Contents/MacOS"
   mkdir -p "$CORE_DEST"
 else
@@ -71,7 +71,7 @@ for helper in updater launcher migrator updater.exe migrator.exe libcronet.dll l
     chmod +x "$CORE_DEST/$helper" 2>/dev/null || true
   fi
 done
-if [[ "$TARGET" == macos || "$TARGET" == macos-arm64 ]]; then
+if [[ "$TARGET" == macos* ]]; then
   [ -f "$CORE_DEST/updater" ] || die "macOS updater is missing from $CORE_DIR"
 fi
 
@@ -91,7 +91,7 @@ case "$TARGET" in
         "Set-Location '$(cygpath -w "$STAGING" 2>/dev/null || echo "$STAGING")'; Compress-Archive -Path 'nekoray' -DestinationPath '$(cygpath -w "$ARCHIVE" 2>/dev/null || echo "$ARCHIVE")' -Force"
     fi
     ;;
-  macos|macos-arm64)
+  macos|macos-arm64|macos-amd64)
     ARCHIVE="$PWD/deployment/nekoray-$VERSION-$TARGET.zip"
     (cd "$STAGING" && zip -qr "$ARCHIVE" nekoray.app)
     ;;
