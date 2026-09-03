@@ -1,7 +1,7 @@
 name: nekoray
 description: A modern cross-platform proxy client (sing-box backend).
 publish_to: "none"
-version: 5.0.0-beta.15
+version: 5.0.0-beta.16
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -32,6 +32,7 @@ dependencies:
 
   # Utils
   collection: ^1.18.0
+  file_picker: ^12.2.0
 
 dev_dependencies:
   flutter_test:

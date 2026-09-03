@@ -88,3 +88,16 @@ sing-box 1.12+ 移除了 geosite 数据库，全部引用迁移为二进制 `.sr
 ## 决策 D8：日志内存 + 文件双通道（2026-09 确定，已落实）
 
 内存 500 行供日志页实时查看；同时 append 到 `<appDir>/logs/core-YYYY-MM-DD.log`（2 MiB 轮转），重启后仍可排查 TUN/启动失败。
+
+## 决策 D9：sing-box 暂不跟进 1.14，钉在 v1.13.19（2026-09 确定）
+
+### 背景
+上游 1.14.0 带来 OpenVPN/OpenConnect/Snell 等新协议与 API 服务，但同时：
+- 要求 Go ≥ 1.25（CI 现为 1.24.x，三处 workflow 待改）；
+- 删除 Legacy DNS server 格式；
+- 废弃 `independent_cache`、`download_detour`、`strategy` 等我方 DNS/规则集构建器正在使用的字段（1.16 删除）；
+- 新增协议需要 Bean 数据模型 + 表单 schema + 订阅解析三端工作。
+
+### 决策
+beta.16 及后续稳定前保持 v1.13.19（TUN 刚按 1.13 语义修稳并有真实 `box.New` 回归测试）。
+1.14 升级单独立项：先做 DNS 构建器废弃字段审计，再升 Go 工具链，最后全协议回归。

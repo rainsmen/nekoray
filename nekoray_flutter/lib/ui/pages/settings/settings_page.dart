@@ -1,10 +1,9 @@
 // Settings page — backed by persisted [AppSettings], with Data Backup & Restore.
 
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
@@ -12,7 +11,6 @@ import '../../../core/i18n.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
-import '../../../core/storage/migration.dart';
 import '../../../core/system/system_integration.dart';
 import '../routing/routing_page.dart';
 
@@ -315,8 +313,8 @@ class SettingsPage extends ConsumerWidget {
                   title: Text(t('exportBackup')),
                   subtitle: const Text('Export full configuration JSON'),
                   trailing: OutlinedButton(
-                    onPressed: () => _exportBackup(context),
-                    child: Text(t('exportLogs')),
+                    onPressed: () => _exportBackupToFile(context),
+                    child: Text(t('exportFile')),
                   ),
                 ),
                 const Divider(height: 1),
@@ -344,21 +342,11 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          // 5. System Migration & Updates
-          _SectionTitle(t('dataManagement')),
+          // 5. Updates
+          _SectionTitle(t('checkUpdates')),
           Card(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.move_to_inbox),
-                  title: const Text('Migrate from C++ NekoRay'),
-                  subtitle: const Text('Import old configs from nekoray.exe directory'),
-                  trailing: OutlinedButton(
-                    onPressed: () => _migrateFromOldNekoray(context, ref),
-                    child: Text(t('import')),
-                  ),
-                ),
-                const Divider(height: 1),
                 SwitchListTile(
                   secondary: const Icon(Icons.new_releases_outlined),
                   title: const Text('Check Pre-Releases (测试版更新)'),
@@ -371,7 +359,7 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.system_update_alt),
                   title: Text(t('checkUpdates')),
-                  subtitle: const Text('v5.0.0-beta.13 · sing-box 1.13.19'),
+                  subtitle: const Text('v5.0.0-beta.16 · sing-box 1.13.19'),
                   trailing: OutlinedButton(
                     onPressed: () => _checkUpdates(context, ref),
                     child: Text(t('checkUpdates')),
@@ -495,62 +483,52 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _exportBackup(BuildContext context) async {
+  /// Exports the backup to a user-chosen file. Falls back to an internal
+  /// timestamped snapshot when no native save dialog is available.
+  Future<void> _exportBackupToFile(BuildContext context) async {
     try {
       final backup = await LocalStore.exportBackup();
       final jsonStr = const JsonEncoder.withIndent('  ').convert(backup);
+      final now = DateTime.now();
+      final fileName = 'nekoray-backup-${now.year}'
+          '${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
+          '-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
 
+      String? savedPath;
+      try {
+        final uri = await FilePicker.saveFile(
+          dialogTitle: I18n.t('exportBackup'),
+          fileName: fileName,
+          bytes: utf8.encode(jsonStr),
+          mimeType: 'application/json',
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+        );
+        if (uri != null) {
+          savedPath = uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
+        } else {
+          return; // user cancelled — not an error
+        }
+      } on Exception {
+        savedPath = null; // e.g. missing zenity on Linux → fallback below
+      }
+
+      if (savedPath != null) {
+        if (!context.mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${I18n.t('fileSaved')}: $savedPath')),
+        );
+        return;
+      }
+
+      final filename = await LocalStore.createLocalBackup();
       if (!context.mounted) {
         return;
       }
-      showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(I18n.t('exportBackupJson')),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(I18n.t('copyBackupJson')),
-                const SizedBox(height: 12),
-                Container(
-                  height: 220,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      jsonStr,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(I18n.t('cancel')),
-            ),
-            FilledButton.icon(
-              icon: const Icon(Icons.copy, size: 16),
-              label: Text(I18n.t('copyLogs')),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: jsonStr));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(I18n.t('copiedToClipboard'))),
-                );
-              },
-            ),
-          ],
-        ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${I18n.t('backupSuccess')}: $filename')),
       );
     } catch (e) {
       if (context.mounted) {
@@ -575,6 +553,34 @@ class SettingsPage extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(I18n.t('importBackupDesc')),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.folder_open_outlined, size: 18),
+                label: Text(I18n.t('importFromFile')),
+                onPressed: () async {
+                  try {
+                    final picked = await FilePicker.pickFile(
+                      dialogTitle: I18n.t('importBackup'),
+                      type: FileType.custom,
+                      allowedExtensions: ['json'],
+                    );
+                    if (picked == null) {
+                      return;
+                    }
+                    ctrl.text = utf8.decode(await picked.readAsBytes());
+                  } catch (e) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('${I18n.t('restoreFailed')}: $e'),
+                          backgroundColor:
+                              Theme.of(ctx).colorScheme.error,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: ctrl,
@@ -725,67 +731,6 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _migrateFromOldNekoray(BuildContext context, WidgetRef ref) async {
-    // ScaffoldMessenger is re-obtained after every await (never held across
-    // async gaps) so context use stays synchronous.
-    final oldDir = Directory.current;
-
-    final preview = await DataMigration.migrateFrom(oldDir.path, dryRun: true);
-    if (!context.mounted) {
-      return;
-    }
-
-    if (preview.profiles == 0 && preview.groups == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('No legacy profiles found in ${oldDir.path}'),
-      ));
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Migrate legacy profiles?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Found ${preview.profiles} profile(s) and '
-                '${preview.groups} group(s) in:'),
-            const SizedBox(height: 4),
-            Text(oldDir.path,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            if (preview.hasErrors) ...[
-              const SizedBox(height: 8),
-              Text('${preview.errors.length} file(s) could not be read and will be skipped.'),
-            ],
-            const SizedBox(height: 8),
-            const Text('Existing profiles are kept; imported nodes get new ids.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(I18n.t('cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(I18n.t('import'))),
-        ],
-      ),
-    );
-    if (confirmed != true) {
-      return;
-    }
-
-    final report = await DataMigration.migrateFrom(oldDir.path);
-    await ref.read(profileListProvider.notifier).load();
-    await ref.read(groupListProvider.notifier).load();
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(report.toString())));
-  }
 
   static Future<void> _guard(
     BuildContext context,

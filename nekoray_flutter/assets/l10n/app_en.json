@@ -172,5 +172,11 @@
   "exportDiag": "Export Diagnostics",
   "diagExported": "Diagnostics saved",
   "noSubscriptions": "No subscription groups to refresh",
-  "defaultGroup": "Default Group"
+  "defaultGroup": "Default Group",
+  "selectNode": "Select Node",
+  "realtime": "Live",
+  "exportFile": "Export to File",
+  "importFromFile": "Import from File",
+  "fileSaved": "Saved to",
+  "noFileSelected": "No file selected"
 }

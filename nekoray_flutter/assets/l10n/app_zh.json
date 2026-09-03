@@ -172,5 +172,11 @@
   "exportDiag": "导出诊断包",
   "diagExported": "诊断包已保存",
   "noSubscriptions": "没有可更新的订阅分组",
-  "defaultGroup": "默认分组"
+  "defaultGroup": "默认分组",
+  "selectNode": "选择节点",
+  "realtime": "实时",
+  "exportFile": "导出到文件",
+  "importFromFile": "从文件导入",
+  "fileSaved": "已保存到",
+  "noFileSelected": "未选择文件"
 }

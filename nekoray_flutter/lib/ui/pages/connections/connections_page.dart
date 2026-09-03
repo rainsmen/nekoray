@@ -106,6 +106,7 @@ class SiteTarget {
   final String id;
   final String name;
   final String url;
+  final String domain;
   final SiteCategory category;
   final IconData icon;
 
@@ -113,9 +114,14 @@ class SiteTarget {
     required this.id,
     required this.name,
     required this.url,
+    required this.domain,
     required this.category,
     required this.icon,
   });
+
+  /// Favicon via Google's icon service, with graceful fallback to [icon].
+  String get faviconUrl =>
+      'https://www.google.com/s2/favicons?domain=$domain&sz=64';
 }
 
 class SiteTestResult {
@@ -148,6 +154,7 @@ class SiteTestResult {
 final defaultSites = <SiteTarget>[
   const SiteTarget(
     id: 'google',
+    domain: 'www.google.com',
     name: 'Google',
     url: 'https://www.google.com/generate_204',
     category: SiteCategory.global,
@@ -155,6 +162,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'youtube',
+    domain: 'www.youtube.com',
     name: 'YouTube',
     url: 'https://www.youtube.com',
     category: SiteCategory.global,
@@ -162,6 +170,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'github',
+    domain: 'github.com',
     name: 'GitHub',
     url: 'https://github.com',
     category: SiteCategory.global,
@@ -169,6 +178,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'cloudflare',
+    domain: '1.1.1.1',
     name: 'Cloudflare',
     url: 'https://1.1.1.1',
     category: SiteCategory.global,
@@ -176,6 +186,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'chatgpt',
+    domain: 'chat.openai.com',
     name: 'OpenAI / ChatGPT',
     url: 'https://chat.openai.com',
     category: SiteCategory.global,
@@ -183,6 +194,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'telegram',
+    domain: 't.me',
     name: 'Telegram',
     url: 'https://t.me',
     category: SiteCategory.global,
@@ -190,6 +202,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'wikipedia',
+    domain: 'www.wikipedia.org',
     name: 'Wikipedia',
     url: 'https://www.wikipedia.org',
     category: SiteCategory.global,
@@ -197,6 +210,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'baidu',
+    domain: 'www.baidu.com',
     name: 'Baidu',
     url: 'https://www.baidu.com',
     category: SiteCategory.domestic,
@@ -204,6 +218,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'bilibili',
+    domain: 'www.bilibili.com',
     name: 'Bilibili',
     url: 'https://www.bilibili.com',
     category: SiteCategory.domestic,
@@ -211,6 +226,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'taobao',
+    domain: 'www.taobao.com',
     name: 'Taobao',
     url: 'https://www.taobao.com',
     category: SiteCategory.domestic,
@@ -218,6 +234,7 @@ final defaultSites = <SiteTarget>[
   ),
   const SiteTarget(
     id: 'qq',
+    domain: 'www.qq.com',
     name: 'Tencent / QQ',
     url: 'https://www.qq.com',
     category: SiteCategory.domestic,
@@ -335,12 +352,11 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
 
   Future<void> _startService(ProxyEntity? activeProfile) async {
     final messenger = ScaffoldMessenger.of(context);
-    if (activeProfile == null) {
+    if (activeProfile == null || activeProfile.id == 0) {
       messenger.showSnackBar(SnackBar(
         content: Text(I18n.t('noActiveNode')),
         backgroundColor: Colors.orange,
       ));
-      _openNodeSelector(context);
       return;
     }
 
@@ -412,6 +428,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
       }
 
       ref.read(connectedProfileProvider.notifier).state = activeProfile.id;
+      ref.read(selectedProfileProvider.notifier).state = activeProfile.id;
       ref.read(coreLogProvider.notifier).add(
           '[INFO] Proxy successfully started for $profileName');
       messenger.showSnackBar(SnackBar(
@@ -438,28 +455,6 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
     }
   }
 
-  void _openNodeSelector(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _NodeSelectorSheet(
-        onSelect: (selected) async {
-          Navigator.pop(ctx);
-          final isRunning = ref.read(connectedProfileProvider) > 0;
-          if (isRunning) {
-            // Hot switch node
-            await _startService(selected);
-          } else {
-            ref.read(connectedProfileProvider.notifier).state = selected.id;
-          }
-        },
-      ),
-    );
-  }
-
   String _formatSpeed(int bytesPerSec) {
     if (bytesPerSec < 1024) return '$bytesPerSec B/s';
     if (bytesPerSec < 1024 * 1024) {
@@ -478,11 +473,22 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
     final isConnected = connectedId > 0;
 
     final profiles = ref.watch(profileListProvider).valueOrNull ?? const [];
-    final activeProfile = profiles.firstWhere(
-      (p) => p.id == connectedId,
-      orElse: () => profiles.isNotEmpty ? profiles.first : ProxyEntity(id: 0, type: ''),
+    final runningId = connectedId;
+    // Selection is independent from running state: it defaults to the
+    // running node, else the first node, and never auto-starts anything.
+    final storedSelected = ref.watch(selectedProfileProvider);
+    final selectedId = storedSelected > 0
+        ? storedSelected
+        : (runningId > 0
+            ? runningId
+            : (profiles.isNotEmpty ? profiles.first.id : 0));
+    final selectedProfile = profiles.firstWhere(
+      (p) => p.id == selectedId,
+      orElse: () => profiles.isNotEmpty
+          ? profiles.first
+          : ProxyEntity(id: 0, type: ''),
     );
-    final hasActiveNode = activeProfile.id > 0;
+    final hasSelectedNode = selectedProfile.id > 0;
 
     final latestUp = history.isNotEmpty ? history.last.up : 0;
     final latestDown = history.isNotEmpty ? history.last.down : 0;
@@ -562,7 +568,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
             ),
             color: isDark ? const Color(0xFF1E293B) : Colors.white,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
                   Row(
@@ -571,11 +577,11 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                       GestureDetector(
                         onTap: _isStartingOrStopping
                             ? null
-                            : () => _toggleService(hasActiveNode ? activeProfile : null),
+                            : () => _toggleService(hasSelectedNode ? selectedProfile : null),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
-                          width: 56,
-                          height: 56,
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: isConnected
@@ -609,7 +615,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                                   )
                                 : Icon(
                                     Icons.power_settings_new,
-                                    size: 28,
+                                    size: 24,
                                     color: isConnected
                                         ? Colors.white
                                         : (isDark ? Colors.white70 : const Color(0xFF475569)),
@@ -626,7 +632,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                             Text(
                               isConnected ? I18n.t('connected') : I18n.t('disconnected'),
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: isConnected
                                     ? (isDark ? const Color(0xFF34D399) : const Color(0xFF059669))
@@ -660,7 +666,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                         ),
                         onPressed: _isStartingOrStopping
                             ? null
-                            : () => _toggleService(hasActiveNode ? activeProfile : null),
+                            : () => _toggleService(hasSelectedNode ? selectedProfile : null),
                         icon: Icon(
                           isConnected ? Icons.stop : Icons.play_arrow,
                           size: 18,
@@ -676,101 +682,78 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                   const Divider(height: 1),
                   const SizedBox(height: 16),
 
-                  // Active Node Card with Quick Switch
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _openNodeSelector(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.black.withOpacity(0.2)
-                            : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.08)
-                              : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.dns_outlined, size: 24, color: scheme.primary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    if (hasActiveNode && activeProfile.type.isNotEmpty) ...[
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: scheme.primary.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          activeProfile.type.toUpperCase(),
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: scheme.primary,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                    ],
-                                    Expanded(
-                                      child: Text(
-                                        hasActiveNode
-                                            ? (activeProfile.name.isNotEmpty
-                                                ? activeProfile.name
-                                                : activeProfile.address)
-                                            : I18n.t('noActiveNode'),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (hasActiveNode && activeProfile.address.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    activeProfile.address,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton.tonal(
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: () => _openNodeSelector(context),
-                            child: Text(
-                              I18n.t('switchNode'),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ],
-                      ),
+                  // Node selector dropdown. Switching only changes the
+                  // selection while stopped; while running it hot-switches.
+                  DropdownButtonFormField<int>(
+                    value: hasSelectedNode ? selectedProfile.id : null,
+                    hint: Text(I18n.t('noActiveNode')),
+                    decoration: InputDecoration(
+                      labelText: I18n.t('selectNode'),
+                      prefixIcon:
+                          const Icon(Icons.dns_outlined, size: 20),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
                     ),
+                    items: [
+                      for (final p in profiles)
+                        DropdownMenuItem(
+                          value: p.id,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: scheme.primary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  p.type.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: scheme.primary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  '${p.name.isNotEmpty ? p.name : p.address}'
+                                  '${p.latency > 0 ? ' · ${p.latency}ms' : ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontWeight: p.id == runningId
+                                        ? FontWeight.bold
+                                        : FontWeight.w500,
+                                    color: p.id == runningId
+                                        ? scheme.primary
+                                        : scheme.onSurface,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    onChanged: (id) async {
+                      if (id == null) return;
+                      ref
+                          .read(selectedProfileProvider.notifier)
+                          .state = id;
+                      // Stopped stays stopped — selection only. Running
+                      // hot-switches to the newly picked node.
+                      if (!isConnected) return;
+                      final picked = profiles.firstWhere(
+                        (e) => e.id == id,
+                        orElse: () => selectedProfile,
+                      );
+                      await _startService(picked);
+                    },
                   ),
 
                   // Quick Switches: System Proxy & Tun Mode
@@ -876,105 +859,63 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      // Upload Counter
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.black.withOpacity(0.2)
-                                : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isDark
-                                  ? Colors.white.withOpacity(0.05)
-                                  : const Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.arrow_upward,
-                                      size: 14, color: scheme.primary),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    I18n.t('uploadSpeed'),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _formatSpeed(latestUp),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: scheme.primary,
-                                ),
-                              ),
-                            ],
+                  const SizedBox(height: 10),
+                  // Compact inline rates: icon + live value, no bulky boxes.
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.black.withOpacity(0.2)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withOpacity(0.05)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.arrow_upward,
+                            size: 16, color: scheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatSpeed(latestUp),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.primary,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Download Counter
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.black.withOpacity(0.2)
-                                : const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isDark
-                                  ? Colors.white.withOpacity(0.05)
-                                  : const Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.arrow_downward,
-                                      size: 14, color: Colors.blue.shade600),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    I18n.t('downloadSpeed'),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _formatSpeed(latestDown),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade600,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(width: 16),
+                        Icon(Icons.arrow_downward,
+                            size: 16, color: Colors.blue.shade600),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatSpeed(latestDown),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade600,
                           ),
                         ),
-                      ),
-                    ],
+                        const Spacer(),
+                        Text(
+                          isConnected
+                              ? I18n.t('realtime')
+                              : I18n.t('disconnected'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   SizedBox(
-                    height: 130,
+                    height: 100,
                     child: _TrafficChart(history: history),
                   ),
                 ],
@@ -1039,8 +980,8 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                   ),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: globalSites
                         .map((site) => _buildSiteChip(site, scheme, isDark))
                         .toList(),
@@ -1059,8 +1000,8 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                   ),
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 10,
+                    runSpacing: 10,
                     children: domesticSites
                         .map((site) => _buildSiteChip(site, scheme, isDark))
                         .toList(),
@@ -1105,49 +1046,79 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
     }
 
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(14),
       onTap: isTesting ? null : () => _testSite(site),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFCBD5E1),
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : const Color(0xFFCBD5E1),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(site.icon, size: 16, color: scheme.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(
-              site.name,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: scheme.onSurface,
+            // Site favicon with graceful fallback to the material icon.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                site.faviconUrl,
+                width: 28,
+                height: 28,
+                errorBuilder: (_, __, ___) => Icon(
+                  site.icon,
+                  size: 26,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  site.name,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  site.domain,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 10),
             if (isTesting)
               const SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.5),
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: badgeColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: badgeColor.withOpacity(0.4)),
                 ),
                 child: Text(
                   badgeText,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 12,
                     color: badgeColor,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1219,143 +1190,6 @@ class _TrafficChart extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Quick node selector bottom sheet
-class _NodeSelectorSheet extends ConsumerStatefulWidget {
-  final ValueChanged<ProxyEntity> onSelect;
-  const _NodeSelectorSheet({required this.onSelect});
-
-  @override
-  ConsumerState<_NodeSelectorSheet> createState() => _NodeSelectorSheetState();
-}
-
-class _NodeSelectorSheetState extends ConsumerState<_NodeSelectorSheet> {
-  final TextEditingController _searchCtrl = TextEditingController();
-  String _query = '';
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final profiles = ref.watch(profileListProvider).valueOrNull ?? const [];
-    final connectedId = ref.watch(connectedProfileProvider);
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final filtered = profiles.where((p) {
-      if (_query.isEmpty) return true;
-      final q = _query.toLowerCase();
-      return p.name.toLowerCase().contains(q) ||
-          p.address.toLowerCase().contains(q) ||
-          p.type.toLowerCase().contains(q);
-    }).toList();
-
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.75,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.swap_horiz, size: 22),
-                const SizedBox(width: 8),
-                Text(
-                  I18n.t('switchNode'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: I18n.t('searchProfiles'),
-                prefixIcon: const Icon(Icons.search, size: 18),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              onChanged: (val) => setState(() => _query = val),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        I18n.t('noProfiles'),
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (ctx, i) {
-                        final p = filtered[i];
-                        final isSelected = p.id == connectedId;
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          leading: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? (isDark ? Colors.green.shade900 : Colors.green.shade100)
-                                  : scheme.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              p.type.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected
-                                    ? Colors.green.shade700
-                                    : scheme.primary,
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            p.name.isNotEmpty ? p.name : p.address,
-                            style: TextStyle(
-                              fontWeight:
-                                  isSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isSelected ? scheme.primary : scheme.onSurface,
-                            ),
-                          ),
-                          subtitle: Text(
-                            p.address,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle,
-                                  color: Colors.green, size: 20)
-                              : null,
-                          onTap: () => widget.onSelect(p),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
       ),
     );
   }

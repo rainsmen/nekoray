@@ -246,15 +246,28 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 	// Routing
 	buildRoute(status, result, tagProxy)
 
-	// Experimental (clash api)
-	if !status.ForTest && ds.CoreBoxClashAPI > 0 {
-		result.CoreConfig["experimental"] = map[string]interface{}{
-			"clash_api": map[string]interface{}{
+	// Experimental (clash api + v2ray stats for the traffic graph)
+	if !status.ForTest {
+		experimental := map[string]interface{}{}
+		if ds.CoreBoxClashAPI > 0 {
+			experimental["clash_api"] = map[string]interface{}{
 				"external_controller": fmt.Sprintf("127.0.0.1:%d", ds.CoreBoxClashAPI),
 				"secret":              ds.CoreBoxClashAPISecret,
 				"external_ui":         "dashboard",
+			}
+		}
+		// The dashboard polls outbound counters via QueryStats. Counters are
+		// only created when the v2ray stats service runs, and the service is
+		// only created when v2ray_api has a listen address — without this
+		// block every traffic query reports 0 forever.
+		experimental["v2ray_api"] = map[string]interface{}{
+			"listen": "127.0.0.1:0",
+			"stats": map[string]interface{}{
+				"enabled":   true,
+				"outbounds": []string{"proxy"},
 			},
 		}
+		result.CoreConfig["experimental"] = experimental
 	}
 }
 

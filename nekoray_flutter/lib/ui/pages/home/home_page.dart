@@ -31,6 +31,13 @@ final homeTabProvider = StateProvider<HomePageTab>((ref) => HomePageTab.dashboar
 /// Currently connected profile ID (0 = disconnected).
 final connectedProfileProvider = StateProvider<int>((ref) => 0);
 
+/// Dashboard-selected profile ID (0 = none yet).
+///
+/// Selection and running state are deliberately separate: picking another
+/// node while stopped must NOT start it — it only changes what the power
+/// button will start next. While running, picking another node hot-switches.
+final selectedProfileProvider = StateProvider<int>((ref) => 0);
+
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -959,6 +966,7 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
       }
 
       ref.read(connectedProfileProvider.notifier).state = profile.id;
+      ref.read(selectedProfileProvider.notifier).state = profile.id;
       ref.read(coreLogProvider.notifier).add('[INFO] Proxy successfully started for $profileName');
       messenger.showSnackBar(SnackBar(
           content: Text('${I18n.t("connected")}: $profileName')));

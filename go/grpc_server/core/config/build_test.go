@@ -344,3 +344,51 @@ func TestBuildTunInboundUsesModernAddressField(t *testing.T) {
 		t.Errorf("tun inbound missing MTU fallback:\n%s", prettyJSON(t, result.CoreConfig))
 	}
 }
+
+// TestBuildEnablesV2RayStats guards the dashboard traffic graph: without the
+// v2ray_api stats service, outbound counters are never created and every
+// QueryStats call reports 0, leaving up/down rates permanently at zero.
+func TestBuildEnablesV2RayStats(t *testing.T) {
+	bean, _ := json.Marshal(&nekokfmt.ShadowSocksBean{
+		AbstractBean: nekokfmt.AbstractBean{
+			ServerAddress: "5.6.7.8",
+			ServerPort:    8388,
+		},
+		Method:   "aes-256-gcm",
+		Password: "secret",
+	})
+	ent := &nekokfmt.ProxyEntity{Type: "shadowsocks", Id: 4, Bean: bean}
+	routing := &nekokfmt.Routing{DefOutbound: "proxy"}
+	ds := &nekokfmt.DataStore{
+		LogLevel:             "info",
+		InboundAddress:       "127.0.0.1",
+		InboundSocksPort:     2080,
+		CoreBoxUnderlyingDNS: "local",
+	}
+
+	result := BuildConfig(ent, nil, routing, ds, false, false)
+	if result.Error != "" {
+		t.Fatalf("BuildConfig error: %s", result.Error)
+	}
+	configFlat := strings.ReplaceAll(prettyJSON(t, result.CoreConfig), " ", "")
+	configFlat = strings.ReplaceAll(configFlat, "\n", "")
+	if !strings.Contains(configFlat, `"v2ray_api"`) {
+		t.Errorf("config missing experimental.v2ray_api:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	if !strings.Contains(configFlat, `"enabled":true`) {
+		t.Errorf("v2ray stats not enabled:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	if !strings.Contains(configFlat, `"outbounds":["proxy"]`) {
+		t.Errorf("v2ray stats missing proxy outbound:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+
+	// Test configs must stay minimal: no listeners, no stats server.
+	testResult := BuildConfig(ent, nil, routing, ds, true, false)
+	if testResult.Error != "" {
+		t.Fatalf("BuildConfig(forTest) error: %s", testResult.Error)
+	}
+	testFlat := strings.ReplaceAll(prettyJSON(t, testResult.CoreConfig), " ", "")
+	if strings.Contains(testFlat, `"v2ray_api"`) {
+		t.Errorf("forTest config should not carry a v2ray_api listener")
+	}
+}
