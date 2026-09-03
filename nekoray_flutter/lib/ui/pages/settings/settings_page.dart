@@ -12,6 +12,7 @@ import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../core/system/system_integration.dart';
+import '../../widgets/section_header.dart';
 import '../routing/routing_page.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -31,7 +32,7 @@ class SettingsPage extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // 1. Proxy
-          _SectionTitle(t('proxy')),
+          SectionHeader(t('proxy'), icon: Icons.public),
           Card(
             child: Column(
               children: [
@@ -64,7 +65,7 @@ class SettingsPage extends ConsumerWidget {
           // 1b. TUN advanced — pre-configurable so the first TUN start does
           // not fail on zero-value MTU/stack, plus a privilege banner that
           // explains the #1 TUN failure cause before it happens.
-          _SectionTitle(t('tunAdvanced')),
+          SectionHeader(t('tunAdvanced'), icon: Icons.vpn_lock),
           Card(
             child: Column(
               children: [
@@ -132,7 +133,7 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // 2. Core
-          _SectionTitle(t('corePort')),
+          SectionHeader(t('corePort'), icon: Icons.settings_ethernet),
           Card(
             child: Column(
               children: [
@@ -203,7 +204,7 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // 3. Application & Theme
-          _SectionTitle(t('application')),
+          SectionHeader(t('application'), icon: Icons.apps_outlined),
           Card(
             child: Column(
               children: [
@@ -279,7 +280,7 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // 4. Data Backup & Restore (备份与恢复)
-          _SectionTitle(t('backupAndRestore')),
+          SectionHeader(t('backupAndRestore'), icon: Icons.backup_outlined),
           Card(
             child: Column(
               children: [
@@ -343,7 +344,7 @@ class SettingsPage extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // 5. Updates
-          _SectionTitle(t('checkUpdates')),
+          SectionHeader(t('checkUpdates'), icon: Icons.system_update_alt),
           Card(
             child: Column(
               children: [
@@ -874,24 +875,6 @@ class _PrivilegeTileState extends State<_PrivilegeTile> {
               : (elevated ? t('elevatedOk') : t('elevatedMissing'))),
         );
       },
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {  final String text;
-  const _SectionTitle(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
     );
   }
 }

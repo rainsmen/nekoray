@@ -63,9 +63,13 @@ jobs:
         working-directory: go/cmd/nekobox_core
         run: go build ./...
 
+      # nekobox_core tests must run with the RELEASE build tags: tag-gated
+      # features (e.g. with_v2ray_api for the traffic stats the dashboard
+      # polls) are absent otherwise, and TestTunInboundInitializes fails with
+      # the exact production error users would see.
       - name: Go test (nekobox_core)
         working-directory: go/cmd/nekobox_core
-        run: go test ./... -race -cover
+        run: go test ./... -race -cover -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego,with_v2ray_api"
 
       - name: Go test (grpc_server)
         working-directory: go/grpc_server

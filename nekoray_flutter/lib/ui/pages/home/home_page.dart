@@ -118,9 +118,23 @@ class _HomePageState extends ConsumerState<HomePage> {
             selectedIndex: tab.index,
             onDestinationSelected: select,
             labelType: NavigationRailLabelType.all,
-            leading: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Icon(Icons.public, size: 32),
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.public,
+                  size: 28,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ),
             destinations: [
               NavigationRailDestination(

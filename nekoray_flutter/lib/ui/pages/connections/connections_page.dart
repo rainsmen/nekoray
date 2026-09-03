@@ -979,13 +979,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: globalSites
-                        .map((site) => _buildSiteChip(site, scheme, isDark))
-                        .toList(),
-                  ),
+                  _siteGrid(globalSites, scheme, isDark),
 
                   const SizedBox(height: 16),
 
@@ -999,19 +993,35 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: domesticSites
-                        .map((site) => _buildSiteChip(site, scheme, isDark))
-                        .toList(),
-                  ),
+                  _siteGrid(domesticSites, scheme, isDark),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Uniform fixed-size site tiles in an adaptive grid: every tile is
+  /// 64px tall and columns share the width, so rows always line up.
+  Widget _siteGrid(
+      List<SiteTarget> sites, ColorScheme scheme, bool isDark) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final cols = (constraints.maxWidth / 230).floor().clamp(1, 4);
+        return GridView.count(
+          crossAxisCount: cols,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          mainAxisExtent: 64,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: sites
+              .map((site) => _buildSiteChip(site, scheme, isDark))
+              .toList(),
+        );
+      },
     );
   }
 

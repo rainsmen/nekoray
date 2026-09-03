@@ -1,10 +1,15 @@
 // JSON file-backed storage.
 //
-// Layout (compatible with the C++ nekoray on-disk layout):
+// Layout (portable-first):
 //   <appDir>/profiles/<id>.json
 //   <appDir>/groups/<id>.json
 //   <appDir>/routing_<name>.json
 //   <appDir>/settings.json
+//
+// <appDir> is `<exeDir>/data` on Windows/Linux (so configs travel with the
+// program folder), `NEKORAY_DATA_DIR` when set, and the OS app-support dir
+// otherwise (read-only installs, macOS bundles, unit tests via overrideRoot).
+// First run migrates legacy app-support data into an empty portable dir.
 //
 // All writes go through [_writeAtomic]: content is written to a temporary file
 // in the same directory and renamed into place. A non-atomic write left
@@ -37,6 +42,15 @@ class LocalStore {
       if (!await override.exists()) await override.create(recursive: true);
       return override;
     }
+    // Portable first: user data lives next to the program so configs can be
+    // shared/carried with the folder. Falls back to the OS app-support dir
+    // when portable storage is unavailable (read-only install, macOS bundle).
+    final portable = await _portableDir();
+    if (portable != null) return portable;
+    return _appSupportDir();
+  }
+
+  static Future<Directory> _appSupportDir() async {
     final support = await getApplicationSupportDirectory();
     final dir = Directory('${support.path}/nekoray');
     if (!await dir.exists()) {
@@ -44,6 +58,100 @@ class LocalStore {
       await _restrictPermissions(dir.path);
     }
     return dir;
+  }
+
+  /// Resolves `<exeDir>/data`, or null when portable storage must not be
+  /// used. `NEKORAY_DATA_DIR` overrides the location everywhere (useful for
+  /// tests and custom layouts). macOS `.app` bundles are excluded: the
+  /// bundle is replaced wholesale on update (wiping anything inside) and
+  /// writing into it breaks code signatures.
+  static Future<Directory?> _portableDir() async {
+    try {
+      final env = Platform.environment['NEKORAY_DATA_DIR'];
+      if (env != null && env.isNotEmpty) {
+        final d = Directory(env);
+        await d.create(recursive: true);
+        if (await _writable(d)) return d;
+        return null;
+      }
+      if (Platform.isMacOS &&
+          Platform.resolvedExecutable.contains('.app/')) {
+        return null;
+      }
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final d =
+          Directory('${exeDir.path}${Platform.pathSeparator}data');
+      await d.create(recursive: true);
+      if (!await _writable(d)) return null;
+      await _restrictPermissions(d.path);
+      // One-time move from the legacy location. Only into an empty dir, and
+      // only when the move actually lands — otherwise stay on the legacy dir
+      // so existing configs never disappear (e.g. cross-volume installs).
+      if (!await _hasProfiles(d) && await _hasProfiles(await _appSupportDir())) {
+        await _moveLegacy(await _appSupportDir(), d);
+      }
+      if (!await _hasProfiles(d) && await _hasProfiles(await _appSupportDir())) {
+        return null;
+      }
+      return d;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> _writable(Directory d) async {
+    try {
+      final probe = File(
+          '${d.path}${Platform.pathSeparator}.writetest');
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _hasProfiles(Directory d) async {
+    try {
+      final pd = Directory('${d.path}${Platform.pathSeparator}profiles');
+      if (!await pd.exists()) return false;
+      await for (final f in pd.list()) {
+        if (f is File && f.path.endsWith('.json')) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Moves legacy data (profiles/groups/routing/settings) into [dst].
+  /// Transient dirs (logs, diagnostics, backups) are left behind; failures
+  /// are swallowed and detected by the caller via [_hasProfiles].
+  static Future<void> _moveLegacy(Directory src, Directory dst) async {
+    try {
+      for (final name in ['profiles', 'groups', 'backups']) {
+        final s = Directory('${src.path}${Platform.pathSeparator}$name');
+        if (!await s.exists()) continue;
+        try {
+          await s.rename('${dst.path}${Platform.pathSeparator}$name');
+        } catch (_) {}
+      }
+      for (final name in ['settings.json']) {
+        final s = File('${src.path}${Platform.pathSeparator}$name');
+        if (!await s.exists()) continue;
+        try {
+          await s.rename('${dst.path}${Platform.pathSeparator}$name');
+        } catch (_) {}
+      }
+      await for (final e in src.list()) {
+        if (e is! File) continue;
+        final name = _baseName(e.path);
+        if (!name.startsWith('routing_') || !name.endsWith('.json')) continue;
+        try {
+          await e.rename('${dst.path}${Platform.pathSeparator}$name');
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   static Future<Directory> _subDir(String name) async {

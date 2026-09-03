@@ -36,7 +36,11 @@ class AppSettings {
     this.systemProxy = false,
     this.tunMode = false,
     this.autoStart = false,
-    this.minimizeToTray = true,
+    // Default OFF: with prevent-close + hide-to-tray as default, clicking X
+    // never actually quit the app — the live tray process (and its core
+    // child holding the install dir) made the folder undeletable, which
+    // users reasonably report as "cannot delete after closing".
+    this.minimizeToTray = false,
     this.corePort = 0,
     this.mixedPort = 2080,
     this.listenAddress = '127.0.0.1',
@@ -92,7 +96,7 @@ class AppSettings {
         systemProxy: j['system_proxy'] == true,
         tunMode: j['tun_mode'] == true,
         autoStart: j['auto_start'] == true,
-        minimizeToTray: j['minimize_to_tray'] != false,
+        minimizeToTray: j['minimize_to_tray'] == true,
         corePort: _int(j['core_port'], 0),
         mixedPort: _int(j['mixed_port'], 2080),
         listenAddress: (j['listen_address'] as String?) ?? '127.0.0.1',

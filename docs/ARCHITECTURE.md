@@ -73,7 +73,7 @@ Go core 使用 sing-box v1.13.19 原生构建器，支持以下协议：
 Go core 编译时使用以下 sing-box 构建标签：
 
 ```
-with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls
+with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego,with_v2ray_api
 ```
 
 > ⚠️ 不要使用 `with_ech`（在 v1.13.19 上会导致编译失败）

@@ -109,7 +109,7 @@ nekoray/
 # 本地编译 (需 Go 1.22+)
 cd go/cmd/nekobox_core
 go mod tidy
-go build -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls"
+go build -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego,with_v2ray_api"
 ```
 
 ### Flutter App

@@ -118,7 +118,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         elevation: isDark ? 0 : 0.5,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(
             color: isDark
                 ? Colors.white.withOpacity(0.08)
@@ -234,6 +234,28 @@ class AppTheme {
             : const Color(0xFFE2E8F0),
         thickness: 1,
         space: 1,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        showDragHandle: true,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        minVerticalPadding: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }

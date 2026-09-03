@@ -210,8 +210,20 @@ class CoreProcess {
       // user cannot delete it right after quitting.
       try {
         await process.exitCode.timeout(const Duration(seconds: 5));
+      } on TimeoutException {
+        // taskkill can miss grandchildren; one more force pass.
+        try {
+          await Process.run(
+                  'taskkill', ['/F', '/T', '/PID', '${process.pid}'])
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {}
+        try {
+          await process.exitCode.timeout(const Duration(seconds: 3));
+        } catch (_) {
+          // Already gone or wedged; the stale-pid reaper covers next launch.
+        }
       } catch (_) {
-        // Already gone or wedged; the stale-pid reaper covers next launch.
+        // Already gone; nothing to do.
       }
     } else {
       process.kill(ProcessSignal.sigterm);

@@ -27,7 +27,7 @@ popd
 #### Go: nekobox_core ####
 pushd go/cmd/nekobox_core
 go mod tidy
-go build -v -o "$DEST" -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego"
+go build -v -o "$DEST" -trimpath -ldflags "-w -s" -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego,with_v2ray_api"
 
 CRONET_PKG="github.com/sagernet/cronet-go/lib/${GOOS}_${GOARCH}"
 CRONET_DIR=$(go list -m -f '{{.Dir}}' "$CRONET_PKG" 2>/dev/null || true)

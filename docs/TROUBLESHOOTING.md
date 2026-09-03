@@ -2,13 +2,22 @@
 
 ## 关闭软件后文件夹删不掉（Windows 提示"占用中"）
 
-最常见的原因不是 bug，而是**窗口关闭默认只是最小化到托盘**（设置 → 最小化到托盘默认开启），代理与 `nekobox_core` 子进程仍在运行。先看托盘图标：能看到 NekoRay 图标就说明程序没退出，用托盘菜单 Quit 才是真正退出。
+自 beta.17 起，点 X 默认就是真正退出（"最小化到托盘"默认关闭；可在设置中重新打开）。
 
-如果确认已 Quit 仍被占用：
+如果仍被占用，按顺序排查：
 
 1. 任务管理器检查 `nekoray.exe` / `nekobox_core.exe` 是否残留，残留则结束任务。
-2. 日志页（或 `<appDir>/logs/core-YYYY-MM-DD.log`）找退出时的 `[ERROR]` 行。
-3. 自 beta.14 起：退出时会等待 core 进程被回收（Windows `taskkill` 后等待 exit），并在 `<appDir>/core.pid` 记录 core 进程号；下次启动会自动清理上次崩溃残留的 core 进程。
+2. 若开着"最小化到托盘"：点 X 只是隐藏，托盘图标右键 Quit 才是退出。
+3. 日志页（或程序目录 `data/logs/core-YYYY-MM-DD.log`）找退出时的 `[ERROR]` 行。
+4. 退出时会等待 core 进程被回收（Windows `taskkill` + 二次补杀），`data/core.pid`
+   记录 core 进程号；下次启动会自动清理上次崩溃残留的 core 进程。
+
+## 数据存在哪里（便携模式）
+
+Windows/Linux 默认使用程序目录下的 `data/` 文件夹（`profiles/`、`groups/`、
+`settings.json`、`logs/` 等），整个程序文件夹拷走即完成迁移/共享。首次启动会自动把
+旧版用户目录数据搬过来；也可用 `NEKORAY_DATA_DIR` 环境变量指定位置。macOS 的
+`.app` 包仍用系统 Application Support（整包更新会替换 bundle）。
 
 ## TUN 模式启动失败
 

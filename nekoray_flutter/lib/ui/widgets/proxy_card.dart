@@ -72,7 +72,7 @@ class ProxyCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       elevation: isDark ? 0 : 0.5,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: selected
               ? Colors.amber
@@ -92,7 +92,7 @@ class ProxyCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(

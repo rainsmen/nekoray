@@ -1,5 +1,27 @@
 # Changelog
 
+## v5.0.0-beta.17 — 启动修复、便携化与仪表盘视觉重构 (2026-09-04)
+
+### Critical Bug Fixes
+- **v2ray_api 未编译进 core 导致无法启动**：beta.16 给配置加上了流量统计，
+  但构建 tag 漏了 `with_v2ray_api`，启动即
+  `create v2ray-server: ... rebuild with -tags with_v2ray_api`。构建脚本
+  （桌面 + Android）已补 tag，CI 的 core 单测改用发布 tag 运行，回归测试
+  无 tag 下复现报错、有 tag 下通过。
+- **关闭后文件夹仍被占用**：`setPreventClose(true)` + 默认最小化到托盘导致
+  点 X 从不真正退出。现"最小化到托盘"默认关闭（点 X 即真退出，可手动 reopen）；
+  Windows 退出增加 taskkill 二次补杀。
+
+### New Features
+- **便携化存储**：Windows/Linux 默认用程序目录 `data/`（`NEKORAY_DATA_DIR`
+  可覆盖），首次启动自动迁移旧用户目录数据；macOS bundle 沿用系统目录。
+- **网站测速固定网格**：统一 64px 高标签、自适应列数，favicon + 域名副行。
+- **视觉重构**：卡片圆角 16、全局统一样式（悬浮 SnackBar、底部弹窗圆角、
+  ListTile 密度）、统一分节标题组件、导航栏 Logo 底。
+
+### Docs
+- 构建 tag 文档同步；TROUBLESHOOTING 补充便携目录与退出排查新版行为。
+
 ## v5.0.0-beta.16 — 仪表盘重构、备份文件化与实时速率修复 (2026-09-04)
 
 ### New Features & UX
