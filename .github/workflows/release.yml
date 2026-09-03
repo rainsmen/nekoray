@@ -65,7 +65,7 @@ jobs:
             target: macos
             package_target: macos-arm64
             core_artifact: core-darwin-arm64
-          - platform: macos-13
+          - platform: macos-latest
             target: macos
             package_target: macos-amd64
             core_artifact: core-darwin-amd64
