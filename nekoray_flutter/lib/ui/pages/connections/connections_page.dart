@@ -369,6 +369,12 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
         'inbound_address': settings.listenAddress,
         'spmode_vpn': settings.tunMode,
         'vpn_internal_tun': settings.tunMode,
+        // TUN keys must always be present — see datastoreJson() in home_page.
+        'vpn_mtu': settings.vpnMtu,
+        'vpn_implementation': settings.vpnStack,
+        'vpn_strict_route': settings.vpnStrictRoute,
+        'vpn_ipv6': settings.vpnIpv6,
+        'fake_dns': settings.fakeDns,
         'spmode_system_proxy': settings.systemProxy,
         'log_level': settings.logLevel,
       };

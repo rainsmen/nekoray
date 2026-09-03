@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
 /// A card representing a single proxy profile.
+///
+/// The node remark ([name]) is the primary line; the raw [address] and the
+/// subscription [groupName] are secondary. An optional [onTest] wires the
+/// per-node latency probe; while [testing] the latency badge spins instead
+/// of showing a stale value.
 class ProxyCard extends StatelessWidget {
   final String name;
   final String type;
@@ -8,6 +13,11 @@ class ProxyCard extends StatelessWidget {
   final int latency;
   final bool connected;
   final VoidCallback? onTap;
+  final bool testing;
+  final VoidCallback? onTest;
+  final String? groupName;
+  final bool selected;
+  final VoidCallback? onLongPress;
 
   const ProxyCard({
     super.key,
@@ -17,6 +27,11 @@ class ProxyCard extends StatelessWidget {
     required this.latency,
     this.connected = false,
     this.onTap,
+    this.testing = false,
+    this.onTest,
+    this.groupName,
+    this.selected = false,
+    this.onLongPress,
   });
 
   Color _latencyColor(bool isDark) {
@@ -24,6 +39,17 @@ class ProxyCard extends StatelessWidget {
     if (latency < 150) return isDark ? Colors.green.shade400 : Colors.green.shade700;
     if (latency < 300) return isDark ? Colors.amber.shade400 : Colors.amber.shade800;
     return isDark ? Colors.red.shade400 : Colors.red.shade700;
+  }
+
+  /// Secondary line. Nodes with a remark show `address · group`; nodes
+  /// without one already show the address as the primary line, so only the
+  /// group is shown (possibly empty, in which case the line collapses).
+  String get _subtitle {
+    final g = groupName?.trim() ?? '';
+    final hasRemark = name.isNotEmpty && name != address;
+    if (!hasRemark) return g;
+    if (g.isEmpty) return address;
+    return '$address · $g';
   }
 
   @override
@@ -38,10 +64,16 @@ class ProxyCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: connected
-              ? (isDark ? scheme.primary : scheme.primary.withOpacity(0.6))
-              : (isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFCBD5E1)),
-          width: connected ? 1.5 : 1,
+          color: selected
+              ? Colors.amber
+              : connected
+                  ? (isDark
+                      ? scheme.primary
+                      : scheme.primary.withOpacity(0.6))
+                  : (isDark
+                      ? Colors.white.withOpacity(0.08)
+                      : const Color(0xFFCBD5E1)),
+          width: (selected || connected) ? 1.5 : 1,
         ),
       ),
       color: connected
@@ -49,11 +81,17 @@ class ProxyCard extends StatelessWidget {
           : (isDark ? const Color(0xFF1E293B) : Colors.white),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
+              if (selected) ...[
+                const Icon(Icons.check_circle,
+                    color: Colors.amber, size: 20),
+                const SizedBox(width: 8),
+              ],
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -77,7 +115,7 @@ class ProxyCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name,
+                      name.isEmpty ? address : name,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: connected ? FontWeight.bold : FontWeight.w600,
@@ -88,7 +126,7 @@ class ProxyCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      address,
+                      _subtitle,
                       style: TextStyle(
                         fontSize: 11,
                         color: scheme.onSurfaceVariant,
@@ -100,6 +138,19 @@ class ProxyCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (onTest != null)
+                IconButton(
+                  icon: testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.speed_outlined, size: 18),
+                  tooltip: 'Test latency',
+                  onPressed: testing ? null : onTest,
+                  visualDensity: VisualDensity.compact,
+                ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -107,14 +158,25 @@ class ProxyCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: latColor.withOpacity(0.4)),
                 ),
-                child: Text(
-                  latency > 0 ? '${latency}ms' : (latency == 0 ? 'timeout' : '-'),
-                  style: TextStyle(
-                    color: latColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: testing
+                    ? SizedBox(
+                        width: 16,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: latColor,
+                        ),
+                      )
+                    : Text(
+                        latency > 0
+                            ? '${latency}ms'
+                            : (latency == 0 ? 'timeout' : '-'),
+                        style: TextStyle(
+                          color: latColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ],
           ),

@@ -63,6 +63,76 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
+          // 1b. TUN advanced — pre-configurable so the first TUN start does
+          // not fail on zero-value MTU/stack, plus a privilege banner that
+          // explains the #1 TUN failure cause before it happens.
+          _SectionTitle(t('tunAdvanced')),
+          Card(
+            child: Column(
+              children: [
+                const _PrivilegeTile(),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.settings_ethernet),
+                  title: Text(t('vpnMtu')),
+                  subtitle: Text('${settings.vpnMtu}'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () => _editInt(
+                      context,
+                      title: t('vpnMtu'),
+                      initial: settings.vpnMtu,
+                      onSave: notifier.setVpnMtu,
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.layers_outlined),
+                  title: Text(t('vpnStack')),
+                  subtitle: Text(_stackName(settings.vpnStack)),
+                  trailing: DropdownButton<int>(
+                    value: settings.vpnStack,
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text('gvisor')),
+                      DropdownMenuItem(value: 1, child: Text('system')),
+                      DropdownMenuItem(value: 2, child: Text('mixed')),
+                    ],
+                    onChanged: (v) => v == null
+                        ? null
+                        : _guard(
+                            context, () => notifier.setVpnStack(v)),
+                  ),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.network_check),
+                  title: Text(t('vpnStrictRoute')),
+                  value: settings.vpnStrictRoute,
+                  onChanged: (v) => _guard(
+                      context, () => notifier.setVpnStrictRoute(v)),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.lan_outlined),
+                  title: Text(t('vpnIpv6')),
+                  value: settings.vpnIpv6,
+                  onChanged: (v) =>
+                      _guard(context, () => notifier.setVpnIpv6(v)),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.dns_outlined),
+                  title: Text(t('fakeDns')),
+                  value: settings.fakeDns,
+                  onChanged: (v) =>
+                      _guard(context, () => notifier.setFakeDns(v)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // 2. Core
           _SectionTitle(t('corePort')),
           Card(
@@ -798,8 +868,52 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
+String _stackName(int v) => switch (v) {
+      1 => 'system',
+      2 => 'mixed',
+      _ => 'gvisor',
+    };
+
+/// Privilege banner for TUN mode. Stateful so the (fast, side-effect free)
+/// elevation probe runs once instead of on every settings rebuild.
+class _PrivilegeTile extends StatefulWidget {
+  const _PrivilegeTile();
+
+  @override
+  State<_PrivilegeTile> createState() => _PrivilegeTileState();
+}
+
+class _PrivilegeTileState extends State<_PrivilegeTile> {
+  late final Future<bool> _elevated = SystemIntegration.isElevated();
+
+  @override
+  Widget build(BuildContext context) {
+    const t = I18n.t;
+    return FutureBuilder<bool>(
+      future: _elevated,
+      builder: (ctx, snap) {
+        final elevated = snap.data ?? false;
+        final scheme = Theme.of(ctx).colorScheme;
+        return ListTile(
+          leading: Icon(
+            snap.hasData
+                ? (elevated
+                    ? Icons.verified_user_outlined
+                    : Icons.warning_amber_outlined)
+                : Icons.shield_outlined,
+            color: snap.hasData && !elevated ? scheme.error : null,
+          ),
+          title: Text(t('privilegeStatus')),
+          subtitle: Text(!snap.hasData
+              ? t('checking')
+              : (elevated ? t('elevatedOk') : t('elevatedMissing'))),
+        );
+      },
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {  final String text;
   const _SectionTitle(this.text);
 
   @override

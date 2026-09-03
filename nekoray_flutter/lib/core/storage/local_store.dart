@@ -405,6 +405,104 @@ class LocalStore {
 
   /// Absolute path of the data directory (exposed for diagnostics).
   static Future<String> rootPath() async => (await _root()).path;
+
+  /// File holding the running core's pid, used to reap orphans after a crash.
+  static Future<File> corePidFile() async =>
+      File('${(await _root()).path}/core.pid');
+
+  /// Writes a diagnostics bundle (environment, storage stats, the in-memory
+  /// log tail plus the tail of today's persisted core log) and returns its
+  /// path. Secrets are never included: profiles hold passwords/private keys,
+  /// so only counts are recorded.
+  static Future<String> exportDiagnostics(List<String> memoryLogs) async {
+    final dir = await _subDir('diagnostics');
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-'
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final buf = StringBuffer()
+      ..writeln('NekoRay diagnostics $stamp')
+      ..writeln('platform: ${Platform.operatingSystem} '
+          '${Platform.operatingSystemVersion}')
+      ..writeln('root: ${(await _root()).path}');
+
+    Future<int> countJson(Directory d) async {
+      var n = 0;
+      try {
+        if (await d.exists()) {
+          await for (final f in d.list()) {
+            if (f is File && f.path.endsWith('.json')) n++;
+          }
+        }
+      } catch (_) {}
+      return n;
+    }
+
+    buf
+      ..writeln('profiles: ${await countJson(await _profilesDir())}')
+      ..writeln('groups: ${await countJson(await _groupsDir())}');
+
+    final tail = memoryLogs.length > 500
+        ? memoryLogs.sublist(memoryLogs.length - 500)
+        : memoryLogs;
+    buf.writeln('--- memory log (${tail.length} lines) ---');
+    for (final line in tail) {
+      buf.writeln(line);
+    }
+
+    try {
+      final day =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final persisted =
+          File('${(await _root()).path}/logs/core-$day.log');
+      if (await persisted.exists()) {
+        final lines = await persisted.readAsLines();
+        final persistedTail = lines.length > 200
+            ? lines.sublist(lines.length - 200)
+            : lines;
+        buf.writeln('--- persisted log (${persistedTail.length} lines) ---');
+        for (final line in persistedTail) {
+          buf.writeln(line);
+        }
+      }
+    } catch (_) {}
+
+    final file = File('${dir.path}/diag-$stamp.txt');
+    await _writeAtomic(file, buf.toString());
+    return file.path;
+  }
+
+  // --- Core log persistence ----------------------------------------------
+
+  /// Maximum size of a daily core log file before it is rotated (2 MiB).
+  static const maxCoreLogBytes = 2 << 20;
+
+  /// Appends one line to `<root>/logs/core-YYYY-MM-DD.log`, rotating the
+  /// previous day-file aside when it exceeds [maxCoreLogBytes].
+  ///
+  /// Fire-and-forget safe: every failure is swallowed so logging can never
+  /// crash the app it is trying to diagnose. Respects [overrideRoot], so
+  /// unit tests stay hermetic.
+  static Future<void> appendCoreLog(String line) async {
+    try {
+      final dir = await _subDir('logs');
+      final now = DateTime.now();
+      final day =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final file = File('${dir.path}/core-$day.log');
+      if (await file.exists() &&
+          await file.length() > maxCoreLogBytes) {
+        final rotated = File('${dir.path}/core-$day.log.1');
+        if (await rotated.exists()) await rotated.delete();
+        await file.rename(rotated.path);
+      }
+      final stamp = now.toIso8601String();
+      await file.writeAsString('$stamp $line\n',
+          mode: FileMode.append, flush: false);
+    } catch (_) {
+      // Logging must never break the caller.
+    }
+  }
 }
 
 String _safeName(String name) =>

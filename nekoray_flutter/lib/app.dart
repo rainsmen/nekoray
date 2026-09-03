@@ -44,7 +44,10 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
 
   Future<void> _initTray() async {
     try {
-      await trayManager.setToolTip('NekoRay');
+      // The tooltip says the proxy keeps running: with minimize-to-tray on,
+      // closing the window hides (not quits) the app, and users otherwise
+      // mistake the live tray process for a folder lock / zombie.
+      await trayManager.setToolTip('NekoRay (running, proxy active)');
       await trayManager.setContextMenu(Menu(items: [
         MenuItem(key: 'show', label: 'Show'),
         MenuItem.separator(),
@@ -92,24 +95,37 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
   }
 
   Future<void> _quit() async {
+    // Every step is time-boxed: a hung core stop used to leave the GUI
+    // half-dead (window gone, core orphaned, install folder locked) with no
+    // way for the user to recover except Task Manager.
     try {
       if (ref.read(settingsProvider).systemProxy) {
-        await SystemIntegration.disableSystemProxy();
+        await SystemIntegration.disableSystemProxy()
+            .timeout(const Duration(seconds: 5));
       }
     } catch (_) {
       // Ignore cleanup error on exit
     }
     try {
-      await disconnectFromCore(ref);
+      await disconnectFromCore(ref).timeout(const Duration(seconds: 12));
     } catch (_) {
-      // Shutting down anyway.
+      // Shutting down anyway; make one last attempt to reap the core so it
+      // does not linger with handles inside the install folder.
+      try {
+        await ref
+            .read(coreProcessProvider)
+            .stop()
+            .timeout(const Duration(seconds: 6));
+      } catch (_) {}
     }
     if (_isDesktop) {
       try {
         await trayManager.destroy();
       } catch (_) {}
-      await windowManager.setPreventClose(false);
-      await windowManager.destroy();
+      try {
+        await windowManager.setPreventClose(false);
+        await windowManager.destroy();
+      } catch (_) {}
     }
     exit(0);
   }

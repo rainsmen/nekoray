@@ -24,6 +24,14 @@ class AppSettings {
   final String themeMode;
   final bool checkPreRelease;
 
+  /// TUN / VPN advanced options. They always ship to the core (see
+  /// `datastoreJson`) so the Go side never falls back to zero-values.
+  final int vpnMtu;
+  final int vpnStack; // 0 gvisor, 1 system, 2 mixed
+  final bool vpnIpv6;
+  final bool vpnStrictRoute;
+  final bool fakeDns;
+
   const AppSettings({
     this.systemProxy = false,
     this.tunMode = false,
@@ -36,6 +44,11 @@ class AppSettings {
     this.locale = 'zh',
     this.themeMode = 'system',
     this.checkPreRelease = false,
+    this.vpnMtu = 1500,
+    this.vpnStack = 0,
+    this.vpnIpv6 = false,
+    this.vpnStrictRoute = false,
+    this.fakeDns = false,
   });
 
   AppSettings copyWith({
@@ -50,6 +63,11 @@ class AppSettings {
     String? locale,
     String? themeMode,
     bool? checkPreRelease,
+    int? vpnMtu,
+    int? vpnStack,
+    bool? vpnIpv6,
+    bool? vpnStrictRoute,
+    bool? fakeDns,
   }) =>
       AppSettings(
         systemProxy: systemProxy ?? this.systemProxy,
@@ -63,6 +81,11 @@ class AppSettings {
         locale: locale ?? this.locale,
         themeMode: themeMode ?? this.themeMode,
         checkPreRelease: checkPreRelease ?? this.checkPreRelease,
+        vpnMtu: vpnMtu ?? this.vpnMtu,
+        vpnStack: vpnStack ?? this.vpnStack,
+        vpnIpv6: vpnIpv6 ?? this.vpnIpv6,
+        vpnStrictRoute: vpnStrictRoute ?? this.vpnStrictRoute,
+        fakeDns: fakeDns ?? this.fakeDns,
       );
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -77,6 +100,11 @@ class AppSettings {
         locale: (j['locale'] as String?) ?? 'zh',
         themeMode: (j['theme_mode'] as String?) ?? 'system',
         checkPreRelease: j['check_pre_release'] == true,
+        vpnMtu: _int(j['vpn_mtu'], 1500),
+        vpnStack: _int(j['vpn_stack'], 0),
+        vpnIpv6: j['vpn_ipv6'] == true,
+        vpnStrictRoute: j['vpn_strict_route'] == true,
+        fakeDns: j['fake_dns'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -91,6 +119,11 @@ class AppSettings {
         'locale': locale,
         'theme_mode': themeMode,
         'check_pre_release': checkPreRelease,
+        'vpn_mtu': vpnMtu,
+        'vpn_stack': vpnStack,
+        'vpn_ipv6': vpnIpv6,
+        'vpn_strict_route': vpnStrictRoute,
+        'fake_dns': fakeDns,
       };
 
   static int _int(Object? v, int fallback) {
@@ -169,6 +202,27 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       _persist(state.copyWith(checkPreRelease: v));
 
   Future<void> setTunMode(bool v) => _persist(state.copyWith(tunMode: v));
+
+  Future<void> setVpnMtu(int v) async {
+    if (v < 576 || v > 9000) {
+      throw ArgumentError('MTU must be between 576 and 9000');
+    }
+    await _persist(state.copyWith(vpnMtu: v));
+  }
+
+  Future<void> setVpnStack(int v) async {
+    if (v < 0 || v > 2) {
+      throw ArgumentError('Unknown TUN stack $v');
+    }
+    await _persist(state.copyWith(vpnStack: v));
+  }
+
+  Future<void> setVpnIpv6(bool v) => _persist(state.copyWith(vpnIpv6: v));
+
+  Future<void> setVpnStrictRoute(bool v) =>
+      _persist(state.copyWith(vpnStrictRoute: v));
+
+  Future<void> setFakeDns(bool v) => _persist(state.copyWith(fakeDns: v));
 
   /// Applies the OS-level auto-start entry, then records the outcome.
   Future<void> setAutoStart(bool v) async {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
+import '../../../core/storage/local_store.dart';
 
 enum LogLevelFilter { all, debug, info, warn, error }
 
@@ -144,6 +145,31 @@ class _LogsPageState extends ConsumerState<LogsPage> {
                       SnackBar(content: Text('${allLogs.length} lines copied')),
                     );
                   },
+          ),
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined),
+            tooltip: I18n.t('exportDiag'),
+            onPressed: () async {
+              try {
+                final path =
+                    await LocalStore.exportDiagnostics(allLogs);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content:
+                          Text('${I18n.t('diagExported')}: $path')),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Export failed: $e'),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.error,
+                  ),
+                );
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep_outlined),

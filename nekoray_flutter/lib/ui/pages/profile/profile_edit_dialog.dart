@@ -71,7 +71,7 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String>(
-                initialValue: _type,
+                value: _type,
                 decoration: InputDecoration(
                   labelText: I18n.t('protocol'),
                   border: const OutlineInputBorder(),
@@ -92,10 +92,13 @@ class _ProfileEditDialogState extends ConsumerState<ProfileEditDialog> {
               ),
               const SizedBox(height: 16),
               DynamicForm(
-                // The ValueKey rebuilds form state on protocol change; the
-                // form also reconciles in didUpdateWidget, so either path is
-                // safe.
-                key: ValueKey(_type),
+                // The GlobalKey both identifies this form (driving rebuilds
+                // on protocol change via didUpdateWidget reconciliation) and
+                // lets _mergeForm/_save collect the typed values. A plain
+                // ValueKey here used to leave _formKey.currentState null, so
+                // every edit was silently discarded and saved beans came out
+                // empty (no name/address) — breaking the node on next start.
+                key: _formKey,
                 fields: schema,
                 values: _formValues,
               ),

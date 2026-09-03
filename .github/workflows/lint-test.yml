@@ -40,6 +40,9 @@ jobs:
       - name: Get sources (sing-box etc.)
         run: ./libs/get_source.sh
 
+      - name: Check version single-source-of-truth
+        run: ./libs/check_version.sh
+
       - name: Verify dependencies
         working-directory: go/cmd/nekobox_core
         run: go mod tidy

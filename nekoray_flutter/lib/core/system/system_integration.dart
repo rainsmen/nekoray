@@ -32,6 +32,27 @@ class SystemIntegration {
   static bool get supportsAutoStart =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
+  /// True when this process runs with the privileges TUN mode needs
+  /// (administrator on Windows, root on Linux/macOS).
+  ///
+  /// Best-effort and side-effect free: `net session` on Windows only succeeds
+  /// for elevated callers; `id -u` prints 0 for root elsewhere.
+  static Future<bool> isElevated() async {
+    try {
+      if (Platform.isWindows) {
+        final r = await Process.run('net', ['session']);
+        return r.exitCode == 0;
+      }
+      if (Platform.isLinux || Platform.isMacOS) {
+        final r = await Process.run('id', ['-u']);
+        return r.exitCode == 0 && (r.stdout as String).trim() == '0';
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static bool get _hasGsettings {
     if (!Platform.isLinux) return false;
     try {

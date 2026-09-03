@@ -8,9 +8,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../process/core_process.dart';
+import '../storage/local_store.dart';
 import 'grpc_client.dart';
 
 /// Rolling buffer of core log lines, for the diagnostics view.
+///
+/// Every line is also appended to `<appDir>/logs/core-YYYY-MM-DD.log` so a
+/// TUN/startup failure can still be diagnosed after restart. The file write
+/// is fire-and-forget and never blocks the UI.
 final coreLogProvider =
     StateNotifierProvider<CoreLogNotifier, List<String>>((ref) => CoreLogNotifier());
 
@@ -24,6 +29,7 @@ class CoreLogNotifier extends StateNotifier<List<String>> {
     state = next.length > _maxLines
         ? next.sublist(next.length - _maxLines)
         : next;
+    LocalStore.appendCoreLog(line);
   }
 
   void clear() => state = const [];

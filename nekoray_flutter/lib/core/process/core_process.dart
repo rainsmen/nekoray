@@ -14,6 +14,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import '../storage/local_store.dart';
+
 /// Where the core is listening, plus the token needed to talk to it.
 class CoreEndpoint {
   final String host;
@@ -88,6 +90,12 @@ class CoreProcess {
     required bool debug,
     required Duration timeout,
   }) async {
+    // A previous run may have died (crash / kill -9) without stopping its
+    // core. The orphan keeps its cwd and library handles inside the install
+    // directory, so on Windows the whole folder reports "in use" and cannot
+    // be deleted. Reap it before binding a new instance.
+    await _reapStaleCore();
+
     final exe = await resolveCoreExecutable();
     if (exe == null) {
       throw CoreProcessException(
@@ -119,6 +127,7 @@ class CoreProcess {
     }
 
     _process = process;
+    await _recordCorePid(process.pid);
 
     final ready = Completer<int>();
 
@@ -196,6 +205,14 @@ class CoreProcess {
       } catch (_) {
         process.kill(ProcessSignal.sigkill);
       }
+      // Reap the process before returning: until the OS reaps it, its
+      // handles (cwd, loaded dlls) keep the install folder locked and the
+      // user cannot delete it right after quitting.
+      try {
+        await process.exitCode.timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Already gone or wedged; the stale-pid reaper covers next launch.
+      }
     } else {
       process.kill(ProcessSignal.sigterm);
       try {
@@ -206,6 +223,67 @@ class CoreProcess {
           await process.exitCode.timeout(const Duration(seconds: 2));
         } catch (_) {}
       }
+    }
+    await _clearCorePid();
+  }
+
+  /// Records the live core pid so a later run can reap it if this one dies
+  /// without stopping it. All failures are swallowed: pid tracking is a
+  /// best-effort aid, and must never break startup (e.g. in unit tests where
+  /// path_provider has no platform channel).
+  Future<void> _recordCorePid(int pid) async {
+    try {
+      final f = await LocalStore.corePidFile();
+      await f.writeAsString('$pid', flush: true);
+    } catch (_) {}
+  }
+
+  Future<void> _clearCorePid() async {
+    try {
+      final f = await LocalStore.corePidFile();
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  /// Kills a core process orphaned by a previous crashed run. The pid alone
+  /// is not trusted (pids get reused): the candidate is killed only when the
+  /// OS confirms its image is our `nekobox_core`.
+  Future<void> _reapStaleCore() async {
+    try {
+      final f = await LocalStore.corePidFile();
+      if (!await f.exists()) return;
+      final pid = int.tryParse((await f.readAsString()).trim());
+      // The file is single-purpose; consume it either way.
+      try {
+        await f.delete();
+      } catch (_) {}
+      if (pid == null) return;
+      if (!await _isOwnCoreProcess(pid)) return;
+      if (Platform.isWindows) {
+        await Process.run('taskkill', ['/F', '/T', '/PID', '$pid']);
+      } else {
+        Process.killPid(pid, ProcessSignal.sigkill);
+      }
+    } catch (_) {}
+  }
+
+  Future<bool> _isOwnCoreProcess(int pid) async {
+    try {
+      if (Platform.isWindows) {
+        final r = await Process.run(
+            'tasklist', ['/FI', 'PID eq $pid', '/FO', 'CSV', '/NH']);
+        return r.exitCode == 0 &&
+            (r.stdout as String).toLowerCase().contains('nekobox_core');
+      }
+      final cmdline = File('/proc/$pid/cmdline');
+      if (await cmdline.exists()) {
+        return (await cmdline.readAsString()).contains('nekobox_core');
+      }
+      final r = await Process.run('ps', ['-p', '$pid', '-o', 'args=']);
+      return r.exitCode == 0 &&
+          (r.stdout as String).contains('nekobox_core');
+    } catch (_) {
+      return false;
     }
   }
 

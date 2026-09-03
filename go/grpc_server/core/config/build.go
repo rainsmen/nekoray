@@ -150,13 +150,21 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 
 	// TUN inbound (VPN mode)
 	if ds.VPNInternalTun && ds.SpmodeVPN && !status.ForTest {
+		// The Flutter client used to omit TUN keys from the datastore payload,
+		// leaving MTU at its Go zero-value (0) and failing inbound creation
+		// in sing-box. Guard here as well so a zero MTU can never reach the
+		// core config.
+		mtu := ds.VPNMTU
+		if mtu <= 0 || mtu > 9000 {
+			mtu = 1500
+		}
 		inbound := map[string]interface{}{
 			"tag":                      "tun-in",
 			"type":                     "tun",
 			"interface_name":           genTunName(),
 			"auto_route":               true,
 			"endpoint_independent_nat": true,
-			"mtu":                      ds.VPNMTU,
+			"mtu":                      mtu,
 			"stack":                    vpnImplementation(ds.VPNImplementation),
 			"strict_route":             ds.VPNStrictRoute,
 			"inet4_address":            "172.19.0.1/28",

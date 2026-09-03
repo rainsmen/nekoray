@@ -64,6 +64,95 @@ class ProfileListNotifier
     await load();
   }
 
+  /// Re-downloads [group]'s subscription URL and swaps its profiles.
+  ///
+  /// Unlike [importSubscription] (which always mints a new group), the nodes
+  /// keep their group: old members are removed before the new batch lands.
+  /// Returns null on success, or a human-readable error.
+  Future<String?> refreshSubscription(
+    ProfileGroup group,
+    GrpcClient client,
+  ) async {
+    if (group.url.isEmpty) return 'Subscription has no URL';
+    final uri = Uri.tryParse(group.url);
+    if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
+      return 'Subscription URL must be http(s)';
+    }
+
+    final String content;
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 30),
+        responseType: ResponseType.plain,
+        maxRedirects: 5,
+      ));
+      final response = await dio.getUri<String>(uri);
+      content = response.data ?? '';
+      if (content.length > _maxSubscriptionBytes) {
+        return 'Subscription content exceeds 8 MiB';
+      }
+    } on DioException catch (e) {
+      return 'Download failed: ${e.message ?? e.type.name}';
+    } catch (e) {
+      return 'Download failed: $e';
+    }
+
+    if (content.trim().isEmpty) return 'Subscription content is empty';
+
+    final List<Map<String, dynamic>> parsed;
+    final String parseError;
+    try {
+      final resp = await client.parseSubscription(
+        ParseSubReq(content: content, format: 'auto'),
+      );
+      parseError = resp.error;
+      parsed = resp.profiles
+          .map((b) => jsonDecode(utf8.decode(b)))
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } catch (e) {
+      return 'Core rejected the content: $e';
+    }
+
+    if (parsed.isEmpty) {
+      return parseError.isNotEmpty ? parseError : 'No valid nodes found';
+    }
+
+    try {
+      final ids = await LocalStore.allocateProfileIds(parsed.length);
+      final entities = <ProxyEntity>[];
+      for (var i = 0; i < parsed.length; i++) {
+        final entity = ProxyEntity.fromJson(parsed[i]);
+        entities.add(ProxyEntity(
+          id: ids[i],
+          gid: group.id,
+          type: entity.type,
+          bean: entity.bean,
+          latency: entity.latency,
+        ));
+      }
+
+      final current = state.valueOrNull ?? const [];
+      for (final p in current.where((p) => p.gid == group.id)) {
+        await LocalStore.deleteProfile(p.id);
+      }
+      await LocalStore.saveProfiles([for (final e in entities) e.toJson()]);
+
+      group.order = ids;
+      group.subLastUpdate = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      await LocalStore.saveGroup(group.toJson());
+
+      await load();
+      if (parseError.isNotEmpty) {
+        return 'Updated ${entities.length} node(s); some entries failed: $parseError';
+      }
+      return null;
+    } catch (e) {
+      return 'Import failed: $e';
+    }
+  }
+
   /// Imports share links from the clipboard.
   ///
   /// All nodes are parsed and written as one batch: a failure part-way through
@@ -219,6 +308,11 @@ class GroupListNotifier extends StateNotifier<AsyncValue<List<ProfileGroup>>> {
     await LocalStore.saveGroup(group.toJson());
     await load();
     return group;
+  }
+
+  Future<void> update(ProfileGroup group) async {
+    await LocalStore.saveGroup(group.toJson());
+    await load();
   }
 
   Future<void> delete(int id) async {

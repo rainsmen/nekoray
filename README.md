@@ -138,10 +138,11 @@ gh workflow run "Release" --repo rainsmen/nekoray --ref dev \
 
 - [架构说明](docs/ARCHITECTURE.md)
 - [技术决策记录](docs/DECISIONS.md)
-- [实施进度](docs/实施进度.md)
-- [迁移实施计划](docs/Flutter迁移实施计划.md)
-- [可行性分析报告](docs/Flutter迁移可行性分析报告.md)
+- [项目现状与已知限制](docs/实施进度.md)
+- [故障排查](docs/TROUBLESHOOTING.md)
+- [安全模型](docs/SECURITY.md)
 - [变更日志](CHANGELOG.md)
+- [历史归档（迁移规划与 2026-08-23 评审，已冻结）](docs/archive/README.md)
 
 ## Credits
 

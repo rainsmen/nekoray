@@ -1,5 +1,21 @@
 # Changelog
 
+## v5.0.0-beta.14 — 退出残留修复、TUN 收尾、节点批量管理与文档重整 (2026-09-04)
+
+### Bug Fixes
+- **退出后文件夹被占用**：Windows 下 `taskkill` 后等待 core 进程被系统回收后再退出；`<appDir>/core.pid` 记录 core 进程号，下次启动自动清理上次崩溃残留的 core 孤儿进程；退出全链路加超时保护，托盘提示明确"关闭窗口≠退出"。
+- **节点编辑丢数据**：编辑框 `_formKey` 从未挂载，`_mergeForm()` 恒为 no-op，新建/编辑节点后 bean 为空。现已挂回，编辑正常保存。
+- **TUN 参数缺失**：启动/MTU 等 TUN 键缺省导致 Go 侧 MTU=0，TUN inbound 创建失败。Dart 侧补全全部 TUN 键，Go 侧 MTU 非法值兜底 1500。
+
+### New Features
+- **节点页**：分组筛选、按延迟排序、单节点/批量延迟测试（core 侧 UrlTest，结果落盘）、多选批量操作（测速/移动分组/删除）、订阅手动全部刷新、分享链接复制、节点重命名。
+- **TUN 高级选项**：MTU、协议栈（gvisor/system/mixed）、严格路由、IPv6、FakeIP 可配置；提权状态检测横幅；TUN 启动失败时输出可操作提示（含原始 core 错误）。
+- **诊断**：core 日志落盘（`<appDir>/logs/`，2 MiB 轮转），日志页一键导出诊断包（脱敏，不含节点密码）。
+- **工程**：`libs/check_version.sh` 强制三处版本号一致并接入 CI。
+
+### Docs
+- `docs/archive/` 冻结迁移规划与 2026-08-23 评审报告；`实施进度.md` 改写为现状矩阵；新增 `TROUBLESHOOTING.md`、`SECURITY.md`；`DECISIONS.md` 补 D3～D8。
+
 ## v5.0.0-beta.13 — Executable Launcher Fix, macOS Updater, Hot Switch Fix, Real Rule-Set Sync & CI Hardening (2026-09-03)
 
 ### Critical Bug Fixes & System Stability
