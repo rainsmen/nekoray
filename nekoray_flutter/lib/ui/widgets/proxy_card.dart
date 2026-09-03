@@ -35,9 +35,15 @@ class ProxyCard extends StatelessWidget {
   });
 
   Color _latencyColor(bool isDark) {
-    if (latency <= 0) return isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    if (latency < 150) return isDark ? Colors.green.shade400 : Colors.green.shade700;
-    if (latency < 300) return isDark ? Colors.amber.shade400 : Colors.amber.shade800;
+    if (latency <= 0) {
+      return isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+    }
+    if (latency < 150) {
+      return isDark ? Colors.green.shade400 : Colors.green.shade700;
+    }
+    if (latency < 300) {
+      return isDark ? Colors.amber.shade400 : Colors.amber.shade800;
+    }
     return isDark ? Colors.red.shade400 : Colors.red.shade700;
   }
 
@@ -47,8 +53,12 @@ class ProxyCard extends StatelessWidget {
   String get _subtitle {
     final g = groupName?.trim() ?? '';
     final hasRemark = name.isNotEmpty && name != address;
-    if (!hasRemark) return g;
-    if (g.isEmpty) return address;
+    if (!hasRemark) {
+      return g;
+    }
+    if (g.isEmpty) {
+      return address;
+    }
     return '$address · $g';
   }
 

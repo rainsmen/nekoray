@@ -285,3 +285,62 @@ func TestBuildWireGuardOutbound(t *testing.T) {
 		t.Errorf("unexpected reserved: %v", reserved)
 	}
 }
+
+// TestBuildTunInboundUsesModernAddressField guards against the sing-box 1.12+
+// removal of legacy tun address fields: emitting inet4_address/inet6_address
+// aborts startup with "legacy tun address fields are deprecated in sing-box
+// 1.10.0 and removed in sing-box 1.12.0".
+func TestBuildTunInboundUsesModernAddressField(t *testing.T) {
+	bean := &nekokfmt.ShadowSocksBean{
+		AbstractBean: nekokfmt.AbstractBean{
+			ServerAddress: "5.6.7.8",
+			ServerPort:    8388,
+		},
+		Method:   "aes-256-gcm",
+		Password: "secret",
+	}
+	beanBytes, _ := json.Marshal(bean)
+
+	ent := &nekokfmt.ProxyEntity{
+		Type: "shadowsocks",
+		Id:   3,
+		Bean: beanBytes,
+	}
+	routing := &nekokfmt.Routing{DefOutbound: "proxy"}
+	ds := &nekokfmt.DataStore{
+		LogLevel:             "info",
+		InboundAddress:       "127.0.0.1",
+		InboundSocksPort:     2080,
+		SpmodeVPN:            true,
+		VPNInternalTun:       true,
+		VPNMTU:               0, // zero must fall back, never reach the config
+		CoreBoxUnderlyingDNS: "local",
+	}
+
+	result := BuildConfig(ent, nil, routing, ds, false, false)
+	if result.Error != "" {
+		t.Fatalf("BuildConfig error: %s", result.Error)
+	}
+
+	configFlat := strings.ReplaceAll(prettyJSON(t, result.CoreConfig), " ", "")
+	configFlat = strings.ReplaceAll(configFlat, "\n", "")
+	configFlat = strings.ReplaceAll(configFlat, "\t", "")
+	if !strings.Contains(configFlat, `"type":"tun"`) {
+		t.Fatalf("config missing tun inbound:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	for _, legacy := range []string{
+		"inet4_address", "inet6_address",
+		"inet4_route_address", "inet6_route_address",
+		"endpoint_independent_nat",
+	} {
+		if strings.Contains(configFlat, `"`+legacy+`"`) {
+			t.Errorf("config contains removed legacy tun field %q", legacy)
+		}
+	}
+	if !strings.Contains(configFlat, `"address":["172.19.0.1/28"]`) {
+		t.Errorf("tun inbound missing modern address list:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	if !strings.Contains(configFlat, `"mtu":1500`) {
+		t.Errorf("tun inbound missing MTU fallback:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+}

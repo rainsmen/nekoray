@@ -1,5 +1,19 @@
 # Changelog
 
+## v5.0.0-beta.15 — TUN 启动修复与 CI 分析门禁清零 (2026-09-04)
+
+### Critical Bug Fixes
+- **TUN 模式无法启动**：`build.go` 生成的 TUN inbound 仍使用 sing-box 1.12 已删除的
+  `inet4_address`/`inet6_address`（及已废弃的 `endpoint_independent_nat`），core 启动即
+  `initialize inbound[1]: legacy tun address fields ...` 失败。现改用合并后的 `address`
+  列表（`172.19.0.1/28`，IPv6 可选追加），并经真实 `box.New` 初始化验证（无提权需求）。
+  新增两级回归测试：`core/config` 配置断言 + `nekobox_core` 实例构造测试。
+
+### CI
+- `flutter analyze --fatal-warnings` 13 个 info 清零（含历史遗留 12 个），Lint & Test 恢复绿色。
+- `DropdownButtonFormField(initialValue:)` 改为 `value:`（前者不存在于该组件 API）。
+- 迁移页跨 await 的 `BuildContext` 持有改为即用即取 + `mounted` 守卫。
+
 ## v5.0.0-beta.14 — 退出残留修复、TUN 收尾、节点批量管理与文档重整 (2026-09-04)
 
 ### Bug Fixes

@@ -158,19 +158,23 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 		if mtu <= 0 || mtu > 9000 {
 			mtu = 1500
 		}
-		inbound := map[string]interface{}{
-			"tag":                      "tun-in",
-			"type":                     "tun",
-			"interface_name":           genTunName(),
-			"auto_route":               true,
-			"endpoint_independent_nat": true,
-			"mtu":                      mtu,
-			"stack":                    vpnImplementation(ds.VPNImplementation),
-			"strict_route":             ds.VPNStrictRoute,
-			"inet4_address":            "172.19.0.1/28",
-		}
+		// sing-box >= 1.12 removed the legacy tun address fields
+		// (inet4_address/inet6_address, endpoint_independent_nat): emitting
+		// them aborts startup with "legacy tun address fields are deprecated
+		// ...". The merged replacement is the `address` list.
+		address := []string{"172.19.0.1/28"}
 		if ds.VPNIPv6 {
-			inbound["inet6_address"] = "fdfe:dcba:9876::1/126"
+			address = append(address, "fdfe:dcba:9876::1/126")
+		}
+		inbound := map[string]interface{}{
+			"tag":            "tun-in",
+			"type":           "tun",
+			"interface_name": genTunName(),
+			"address":        address,
+			"auto_route":     true,
+			"mtu":            mtu,
+			"stack":          vpnImplementation(ds.VPNImplementation),
+			"strict_route":   ds.VPNStrictRoute,
 		}
 		status.Inbounds = append(status.Inbounds, inbound)
 	}

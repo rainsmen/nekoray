@@ -412,7 +412,9 @@ class SettingsPage extends ConsumerWidget {
         includePreRelease: settings.checkPreRelease,
       );
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        return;
+      }
 
       if (resp.error.isNotEmpty) {
         messenger.showSnackBar(
@@ -469,7 +471,9 @@ class SettingsPage extends ConsumerWidget {
     try {
       final client = ref.read(grpcClientProvider);
       final resp = await client.downloadUpdate(sessionId: sessionId);
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        return;
+      }
       if (resp.error.isNotEmpty) {
         messenger.showSnackBar(
           SnackBar(content: Text('Download failed: ${resp.error}'), backgroundColor: Colors.red),
@@ -496,7 +500,9 @@ class SettingsPage extends ConsumerWidget {
       final backup = await LocalStore.exportBackup();
       final jsonStr = const JsonEncoder.withIndent('  ').convert(backup);
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        return;
+      }
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -627,7 +633,9 @@ class SettingsPage extends ConsumerWidget {
   Future<void> _showSnapshotsDialog(BuildContext context, WidgetRef ref) async {
     final backups = await LocalStore.listLocalBackups();
 
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      return;
+    }
 
     showDialog<void>(
       context: context,
@@ -688,6 +696,9 @@ class SettingsPage extends ConsumerWidget {
                               await ref.read(routingConfigProvider.notifier).load();
                               await ref.read(settingsProvider.notifier).load();
 
+                              if (!context.mounted) {
+                                return;
+                              }
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text(I18n.t('restoreSuccess'))),
                               );
@@ -715,14 +726,17 @@ class SettingsPage extends ConsumerWidget {
   }
 
   Future<void> _migrateFromOldNekoray(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
+    // ScaffoldMessenger is re-obtained after every await (never held across
+    // async gaps) so context use stays synchronous.
     final oldDir = Directory.current;
 
     final preview = await DataMigration.migrateFrom(oldDir.path, dryRun: true);
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      return;
+    }
 
     if (preview.profiles == 0 && preview.groups == 0) {
-      messenger.showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('No legacy profiles found in ${oldDir.path}'),
       ));
       return;
@@ -759,12 +773,18 @@ class SettingsPage extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      return;
+    }
 
     final report = await DataMigration.migrateFrom(oldDir.path);
     await ref.read(profileListProvider.notifier).load();
     await ref.read(groupListProvider.notifier).load();
-    messenger.showSnackBar(SnackBar(content: Text(report.toString())));
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(report.toString())));
   }
 
   static Future<void> _guard(

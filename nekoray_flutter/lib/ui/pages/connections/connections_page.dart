@@ -868,7 +868,7 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                       const Icon(Icons.speed, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        I18n.t('uploadSpeed') + ' / ' + I18n.t('downloadSpeed'),
+                        "${I18n.t('uploadSpeed')} / ${I18n.t('downloadSpeed')}",
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,

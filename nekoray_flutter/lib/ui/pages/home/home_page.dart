@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/grpc/generated/libcore.pb.dart';
-import '../../../core/grpc/generated/libcore.pbenum.dart';
 import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';

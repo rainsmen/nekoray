@@ -718,7 +718,7 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                             Row(
                               children: [
                                 Text(
-                                  I18n.t('finalOutbound') + ':',
+                                  '${I18n.t('finalOutbound')}:',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
@@ -871,7 +871,7 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                                 Row(
                                   children: [
                                     Text(
-                                      I18n.t('ruleAction') + ':',
+                                      '${I18n.t('ruleAction')}:',
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -1100,7 +1100,7 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                                   Row(
                                     children: [
                                       Text(
-                                        I18n.t('outboundAction') + ':',
+                                        '${I18n.t('outboundAction')}:',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
@@ -1216,8 +1216,12 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
 
   IconData _getRuleIcon(RoutingRule r) {
     final text = '${r.name} ${r.domains.join(" ")} ${r.ip.join(" ")}'.toLowerCase();
-    if (text.contains('apple')) return Icons.apple;
-    if (text.contains('google')) return Icons.travel_explore;
+    if (text.contains('apple')) {
+      return Icons.apple;
+    }
+    if (text.contains('google')) {
+      return Icons.travel_explore;
+    }
     if (text.contains('openai') || text.contains('ai') || text.contains('claude')) {
       return Icons.smart_toy_outlined;
     }
@@ -1227,12 +1231,18 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
     if (text.contains('cn') || text.contains('china') || text.contains('国内')) {
       return Icons.language;
     }
-    if (text.contains('telegram')) return Icons.send_outlined;
-    if (text.contains('github') || text.contains('code')) return Icons.code;
+    if (text.contains('telegram')) {
+      return Icons.send_outlined;
+    }
+    if (text.contains('github') || text.contains('code')) {
+      return Icons.code;
+    }
     if (text.contains('netflix') || text.contains('youtube') || text.contains('media')) {
       return Icons.movie_outlined;
     }
-    if (text.contains('private') || text.contains('lan')) return Icons.home_outlined;
+    if (text.contains('private') || text.contains('lan')) {
+      return Icons.home_outlined;
+    }
     return Icons.route;
   }
 }
@@ -1395,7 +1405,7 @@ class _EditRuleDialogState extends State<_EditRuleDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final parseList = (String raw) => raw
+            List<String> parseList(String raw) => raw
                 .split(RegExp(r'[\n,]'))
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
@@ -1432,7 +1442,9 @@ Map<String, dynamic> toGrpcRouting(RoutingConfig config) {
   final customRules = <Map<String, dynamic>>[];
 
   for (final rule in config.rules) {
-    if (!rule.enabled) continue;
+    if (!rule.enabled) {
+      continue;
+    }
 
     if (rule.protocol.isEmpty &&
         rule.network.isEmpty &&
@@ -1525,17 +1537,33 @@ Map<String, dynamic> _compileRuleToSingBox(RoutingRule rule) {
     }
   }
 
-  if (ruleSet.isNotEmpty) map['rule_set'] = ruleSet;
-  if (domainFull.isNotEmpty) map['domain'] = domainFull;
-  if (domainSuffix.isNotEmpty) map['domain_suffix'] = domainSuffix;
-  if (domainKeyword.isNotEmpty) map['domain_keyword'] = domainKeyword;
-  if (domainRegexp.isNotEmpty) map['domain_regex'] = domainRegexp;
-  if (ipCIDR.isNotEmpty) map['ip_cidr'] = ipCIDR;
-  if (ipIsPrivate) map['ip_is_private'] = true;
+  if (ruleSet.isNotEmpty) {
+    map['rule_set'] = ruleSet;
+  }
+  if (domainFull.isNotEmpty) {
+    map['domain'] = domainFull;
+  }
+  if (domainSuffix.isNotEmpty) {
+    map['domain_suffix'] = domainSuffix;
+  }
+  if (domainKeyword.isNotEmpty) {
+    map['domain_keyword'] = domainKeyword;
+  }
+  if (domainRegexp.isNotEmpty) {
+    map['domain_regexp'] = domainRegexp;
+  }
+  if (ipCIDR.isNotEmpty) {
+    map['ip_cidr'] = ipCIDR;
+  }
+  if (ipIsPrivate) {
+    map['ip_is_private'] = true;
+  }
 
   if (rule.port.isNotEmpty) {
     final portInts = rule.port.map((p) => int.tryParse(p)).whereType<int>().toList();
-    if (portInts.isNotEmpty) map['port'] = portInts;
+    if (portInts.isNotEmpty) {
+    map['port'] = portInts;
+  }
   }
   if (rule.protocol.isNotEmpty) {
     map['protocol'] = rule.protocol.split(',').map((s) => s.trim()).toList();

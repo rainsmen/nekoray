@@ -9,6 +9,7 @@ analyzer:
     - "lib/core/grpc/generated/**"
     - "lib/**/*.g.dart"
     - "lib/**/*.freezed.dart"
+    - build/**
   errors:
     missing_required_param: error
     deprecated_member_use: false
