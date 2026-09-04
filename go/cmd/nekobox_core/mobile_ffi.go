@@ -17,6 +17,7 @@ import (
 
 	"grpc_server"
 )
+
 var mobileMu sync.Mutex
 var mobileRunning bool
 
@@ -33,6 +34,7 @@ var mobileRunning bool
 // free it with NekoboxFree). Runs the server on a goroutine and returns
 // once the listener is bound — i.e. by the time it returns, the port is
 // connectable.
+//
 //export NekoboxStart
 func NekoboxStart(port C.int, ctoken *C.char) *C.char {
 	mobileMu.Lock()
@@ -64,6 +66,7 @@ func NekoboxStart(port C.int, ctoken *C.char) *C.char {
 }
 
 // NekoboxStop shuts the in-process core down. Safe to call when stopped.
+//
 //export NekoboxStop
 func NekoboxStop() {
 	mobileMu.Lock()
@@ -77,6 +80,7 @@ func NekoboxStop() {
 }
 
 // NekoboxFree releases a string returned by NekoboxStart.
+//
 //export NekoboxFree
 func NekoboxFree(s *C.char) {
 	C.free(unsafe.Pointer(s))
