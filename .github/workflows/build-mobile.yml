@@ -90,11 +90,11 @@ jobs:
 
       - name: Build APK
         working-directory: nekoray_flutter
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
 
       - name: Build App Bundle
         working-directory: nekoray_flutter
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --android-skip-build-dependency-validation
 
       - uses: actions/upload-artifact@v4
         with:

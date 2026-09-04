@@ -205,7 +205,7 @@ jobs:
 
       - name: Build APK
         working-directory: nekoray_flutter
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
 
       - name: Rename APKs with version
         shell: bash
