@@ -1,6 +1,7 @@
 // Settings page — backed by persisted [AppSettings], with Data Backup & Restore.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
