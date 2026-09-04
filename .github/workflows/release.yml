@@ -169,7 +169,10 @@ jobs:
 
       - name: Enable Android platform
         working-directory: nekoray_flutter
-        run: flutter create --platforms=android --org com.nekoray .
+        run: |
+          flutter create --platforms=android --org com.nekoray .
+          rm -f android/settings.gradle.kts android/build.gradle.kts android/app/build.gradle.kts
+          rm -rf android/app/src/main/kotlin/com/nekoray/nekoray
 
       # The Go core rides inside the APK (jniLibs) — without this the app
       # starts but finds no core to talk to. build_android.sh names ABIs
