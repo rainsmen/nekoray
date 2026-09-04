@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.nekoray.client"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,7 +23,7 @@ android {
         applicationId = "com.nekoray.client"
         // sing-box & Flutter require minSdk >= 21
         minSdk = 21
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
