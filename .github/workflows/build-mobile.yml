@@ -31,11 +31,20 @@ jobs:
           channel: stable
           cache: true
 
-      # Android NDK for Go cross-compilation
+      # Android NDK for Go cross-compilation.
+      # Must be r28+: the prebuilt libcronet.a (NaiveProxy) uses arm64 pointer-
+      # authentication relocations that NDK 27's lld rejects with
+      # "unknown relocation (315)". Matches upstream sing-box CI.
       - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Export NDK env
         run: |
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
       - name: Fetch sing-box source
         run: ./libs/get_source.sh
