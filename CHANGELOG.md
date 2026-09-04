@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.0.1 — Logo 换新 (2026-09-04)
+
+- 应用图标更换为全幅霓虹猫（`assets/icon/app_logo.png`），原生启动图标与应用内同步更新。
+
 ## v5.0.0 — 首个正式版 (2026-09-04)
 
 Flutter + sing-box Go 核心重构后的首个稳定发布。相对 beta.17 的增量：
