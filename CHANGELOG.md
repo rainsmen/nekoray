@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.0.2 — Android NaiveProxy 可用 (2026-09-04)
+
+- Android：core 改走 CGO + NDK 静态链接 `libcronet.a`（去掉 `with_purego`），修复
+  NaiveProxy 节点启动报 `cronet: library not found`；APK 体积会增大十几 MB。
+  另加编译期 guard（`cronet_android_guard.go`）防止该 tag 组合回归。
+
 ## v5.0.1 — Logo 换新 (2026-09-04)
 
 - 应用图标更换为全幅霓虹猫（`assets/icon/app_logo.png`），原生启动图标与应用内同步更新。

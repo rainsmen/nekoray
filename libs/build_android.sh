@@ -77,10 +77,16 @@ build_abi() {
   fi
 
   mkdir -p "$DEST/$ABI"
+  # NOTE: no `with_purego` here. sing-box's NaiveProxy outbound requires the
+  # Cronet native engine; on Android the only supported mode is CGO + NDK with
+  # libcronet.a statically linked (see cronet-go/lib/android_* and sing-box
+  # docs "with_naive_outbound"). With `with_purego` the core would instead try
+  # to dlopen libcronet.so at runtime and every naive node would fail with
+  # "cronet: library not found".
   go build -buildmode=c-shared \
     -o "$DEST/$ABI/libnekobox.so" \
     -trimpath -ldflags "-w -s" \
-    -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_purego,with_v2ray_api" \
+    -tags "with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound,with_v2ray_api" \
     .
 
   # Also copy the generated header for native bindings
