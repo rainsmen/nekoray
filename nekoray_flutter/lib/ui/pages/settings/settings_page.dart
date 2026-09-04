@@ -58,7 +58,8 @@ class SettingsPage extends ConsumerWidget {
                       'Route all traffic through a virtual interface. '
                       'Requires elevated privileges.'),
                   value: settings.tunMode,
-                  onChanged: (v) => _guard(context, () => notifier.setTunMode(v)),
+                  onChanged: (v) =>
+                      _guard(context, () => notifier.setTunMode(v)),
                 ),
               ],
             ),
@@ -102,8 +103,7 @@ class SettingsPage extends ConsumerWidget {
                     ],
                     onChanged: (v) => v == null
                         ? null
-                        : _guard(
-                            context, () => notifier.setVpnStack(v)),
+                        : _guard(context, () => notifier.setVpnStack(v)),
                   ),
                 ),
                 const Divider(height: 1),
@@ -111,8 +111,8 @@ class SettingsPage extends ConsumerWidget {
                   secondary: const Icon(Icons.network_check),
                   title: Text(t('vpnStrictRoute')),
                   value: settings.vpnStrictRoute,
-                  onChanged: (v) => _guard(
-                      context, () => notifier.setVpnStrictRoute(v)),
+                  onChanged: (v) =>
+                      _guard(context, () => notifier.setVpnStrictRoute(v)),
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
@@ -217,8 +217,7 @@ class SettingsPage extends ConsumerWidget {
                   trailing: DropdownButton<String>(
                     value: settings.locale,
                     items: const [
-                      DropdownMenuItem(
-                          value: 'zh', child: Text('简体中文')),
+                      DropdownMenuItem(value: 'zh', child: Text('简体中文')),
                       DropdownMenuItem(value: 'en', child: Text('English')),
                     ],
                     onChanged: (val) {
@@ -240,7 +239,8 @@ class SettingsPage extends ConsumerWidget {
                         value: 'system',
                         child: Row(
                           children: [
-                            const Icon(Icons.brightness_auto_outlined, size: 18),
+                            const Icon(Icons.brightness_auto_outlined,
+                                size: 18),
                             const SizedBox(width: 8),
                             Text(t('themeSystem')),
                           ],
@@ -336,19 +336,14 @@ class SettingsPage extends ConsumerWidget {
                   trailing: DropdownButton<int>(
                     value: settings.subAutoUpdateHours,
                     items: [
-                      DropdownMenuItem(
-                          value: 0, child: Text(t('updateOff'))),
-                      DropdownMenuItem(
-                          value: 6, child: Text(t('every6h'))),
-                      DropdownMenuItem(
-                          value: 12, child: Text(t('every12h'))),
-                      DropdownMenuItem(
-                          value: 24, child: Text(t('every24h'))),
+                      DropdownMenuItem(value: 0, child: Text(t('updateOff'))),
+                      DropdownMenuItem(value: 6, child: Text(t('every6h'))),
+                      DropdownMenuItem(value: 12, child: Text(t('every12h'))),
+                      DropdownMenuItem(value: 24, child: Text(t('every24h'))),
                     ],
                     onChanged: (val) {
                       if (val != null) {
-                        _guard(
-                            context, () => notifier.setSubAutoUpdate(val));
+                        _guard(context, () => notifier.setSubAutoUpdate(val));
                       }
                     },
                   ),
@@ -394,13 +389,17 @@ class SettingsPage extends ConsumerWidget {
                         final filename = await LocalStore.createLocalBackup();
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${t("backupSuccess")}: $filename')),
+                            SnackBar(
+                                content:
+                                    Text('${t("backupSuccess")}: $filename')),
                           );
                         }
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+                            SnackBar(
+                                content: Text('Backup failed: $e'),
+                                backgroundColor: Colors.red),
                           );
                         }
                       }
@@ -529,7 +528,9 @@ class SettingsPage extends ConsumerWidget {
 
       if (resp.error.isNotEmpty) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Update check error: ${resp.error}'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Update check error: ${resp.error}'),
+              backgroundColor: Colors.red),
         );
         return;
       }
@@ -561,13 +562,16 @@ class SettingsPage extends ConsumerWidget {
         );
       } else {
         messenger.showSnackBar(
-          const SnackBar(content: Text('You are already using the latest version.')),
+          const SnackBar(
+              content: Text('You are already using the latest version.')),
         );
       }
     } catch (e) {
       if (context.mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Failed to check updates: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Failed to check updates: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -577,7 +581,8 @@ class SettingsPage extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String sessionId) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(content: Text('Downloading update package in background...')),
+      const SnackBar(
+          content: Text('Downloading update package in background...')),
     );
     try {
       final client = ref.read(grpcClientProvider);
@@ -587,12 +592,15 @@ class SettingsPage extends ConsumerWidget {
       }
       if (resp.error.isNotEmpty) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Download failed: ${resp.error}'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Download failed: ${resp.error}'),
+              backgroundColor: Colors.red),
         );
       } else {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Update downloaded. Restart application or run updater to apply.'),
+            content: Text(
+                'Update downloaded. Restart application or run updater to apply.'),
             duration: Duration(seconds: 8),
           ),
         );
@@ -600,7 +608,9 @@ class SettingsPage extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text('Update download error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Update download error: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -656,7 +666,8 @@ class SettingsPage extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Export failed: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -696,8 +707,7 @@ class SettingsPage extends ConsumerWidget {
                       ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(
                           content: Text('${I18n.t('restoreFailed')}: $e'),
-                          backgroundColor:
-                              Theme.of(ctx).colorScheme.error,
+                          backgroundColor: Theme.of(ctx).colorScheme.error,
                         ),
                       );
                     }
@@ -729,7 +739,9 @@ class SettingsPage extends ConsumerWidget {
       ),
     );
 
-    if (confirmed != true || ctrl.text.trim().isEmpty || !context.mounted) return;
+    if (confirmed != true || ctrl.text.trim().isEmpty || !context.mounted) {
+      return;
+    }
 
     try {
       final json = jsonDecode(ctrl.text.trim());
@@ -753,7 +765,9 @@ class SettingsPage extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18n.t("restoreFailed")}: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('${I18n.t("restoreFailed")}: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -777,7 +791,8 @@ class SettingsPage extends ConsumerWidget {
               ? Center(
                   child: Text(
                     I18n.t('noBackups'),
-                    style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant),
                   ),
                 )
               : ListView.separated(
@@ -789,10 +804,13 @@ class SettingsPage extends ConsumerWidget {
                     return ListTile(
                       dense: true,
                       leading: const Icon(Icons.backup_outlined, size: 20),
-                      title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      title: Text(name,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
                       trailing: FilledButton.tonal(
                         style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -804,12 +822,15 @@ class SettingsPage extends ConsumerWidget {
                               content: Text(I18n.t('confirmRestore')),
                               actions: [
                                 TextButton(
-                                  onPressed: () => Navigator.pop(confirmCtx, false),
+                                  onPressed: () =>
+                                      Navigator.pop(confirmCtx, false),
                                   child: Text(I18n.t('cancel')),
                                 ),
                                 FilledButton(
-                                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                                  onPressed: () => Navigator.pop(confirmCtx, true),
+                                  style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.red),
+                                  onPressed: () =>
+                                      Navigator.pop(confirmCtx, true),
                                   child: Text(I18n.t('save')),
                                 ),
                               ],
@@ -820,20 +841,27 @@ class SettingsPage extends ConsumerWidget {
                             Navigator.pop(ctx);
                             try {
                               await LocalStore.restoreLocalBackup(f);
-                              await ref.read(profileListProvider.notifier).load();
+                              await ref
+                                  .read(profileListProvider.notifier)
+                                  .load();
                               await ref.read(groupListProvider.notifier).load();
-                              await ref.read(routingConfigProvider.notifier).load();
+                              await ref
+                                  .read(routingConfigProvider.notifier)
+                                  .load();
                               await ref.read(settingsProvider.notifier).load();
 
                               if (!context.mounted) {
                                 return;
                               }
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(I18n.t('restoreSuccess'))),
+                                SnackBar(
+                                    content: Text(I18n.t('restoreSuccess'))),
                               );
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+                                SnackBar(
+                                    content: Text('Restore failed: $e'),
+                                    backgroundColor: Colors.red),
                               );
                             }
                           }
@@ -853,7 +881,6 @@ class SettingsPage extends ConsumerWidget {
       ),
     );
   }
-
 
   Future<void> _showAbout(BuildContext context) async {
     await showDialog<void>(
@@ -908,8 +935,8 @@ class SettingsPage extends ConsumerWidget {
 
   Future<void> _openUrl(BuildContext context, String url) async {
     try {
-      final ok = await launchUrl(Uri.parse(url),
-          mode: LaunchMode.externalApplication);
+      final ok =
+          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       if (!ok && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(url)),

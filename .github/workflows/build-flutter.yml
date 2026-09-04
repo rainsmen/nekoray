@@ -83,7 +83,9 @@ jobs:
 
       - name: Enable platforms
         working-directory: nekoray_flutter
-        run: flutter create --platforms=${{ matrix.target }} .
+        # android is included (though never built here): flutter_launcher_icons
+        # needs its manifest to resolve the package name on every target.
+        run: flutter create --platforms=android,${{ matrix.target }} .
 
       - name: Apply app icon
         working-directory: nekoray_flutter
