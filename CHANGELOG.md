@@ -5,6 +5,8 @@
 - 应用图标更换为全幅霓虹猫（`assets/icon/app_logo.png`），原生启动图标与应用内同步更新。
 - Android：core 改为随 APK 内置的 `libnekobox.so` 进程内启动（FFI），修复启动即报
   `nekobox_core binary not found`；订阅/节点/测速走同一 gRPC 通道（VPN/TUN 模式后续迭代）。
+- Android：补 `INTERNET`/`ACCESS_NETWORK_STATE` 权限（release manifest 默认缺失导致
+  `socket: operation not permitted`），CI 在 `flutter create` 后自动注入。
 
 ## v5.0.0 — 首个正式版 (2026-09-04)
 

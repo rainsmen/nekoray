@@ -188,6 +188,11 @@ jobs:
         working-directory: nekoray_flutter
         run: dart run flutter_launcher_icons
 
+      # Release manifest from `flutter create` grants no INTERNET permission,
+      # without which every socket() fails with EPERM on device.
+      - name: Patch Android manifest permissions
+        run: ./libs/patch_android_manifest.sh
+
       - name: Install dependencies
         working-directory: nekoray_flutter
         run: flutter pub get
