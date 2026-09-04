@@ -2,5 +2,5 @@
 //
 // Mirrors `nekoray_version.txt` and the pubspec version (enforced together by
 // `libs/check_version.sh`) so UI strings never hardcode a stale version.
-const appVersion = '5.0.2';
+const appVersion = '5.0.3';
 const singBoxVersion = '1.13.19';

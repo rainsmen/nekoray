@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.0.3 — Android VpnService 免 Root TUN 代理与规则集更新修复 (2026-09-04)
+
+- **Android VpnService 接入**：通过 Android 原生 `VpnService` 创建虚拟网络接口，并在进程内将 native TUN 文件描述符（FD）透传给 sing-box 核心接管，实现普通用户免 Root 开启系统级全局 VPN 代理。
+- **防止路由回环死锁**：在 Android 原生层通过 `addDisallowedApplication` 排除自身出站流量，实现代理核心对远端服务器连接直连物理网卡，杜绝死锁。
+- **修复规则集更新权限错误**：通过在移动核心启动时注入 App 私有沙盒路径，彻底修复 Android 端更新规则集报 `mkdir /data/local/nekoray-ruleset: permission denied` 的问题。
+- **桌面端零破坏**：Windows / Linux / macOS 客户端配置逻辑保持 100% 原始隔离，不受移动端变更影响。
+
 ## v5.0.2 — Android NaiveProxy 可用 (2026-09-04)
 
 - Android：core 改走 CGO + NDK 静态链接 `libcronet.a`（去掉 `with_purego`），修复

@@ -85,6 +85,16 @@ func TestDefaultCacheDirIsAbsolute(t *testing.T) {
 	_ = os.TempDir()
 }
 
+func TestDefaultCacheDirRespectsEnv(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("NEKORAY_CACHE_DIR", tmp)
+	m := NewManager("")
+	expected := filepath.Join(tmp, "ruleset")
+	if m.cacheDir != expected {
+		t.Fatalf("expected cache dir %q, got %q", expected, m.cacheDir)
+	}
+}
+
 func TestRegisterPersistsAcrossManagers(t *testing.T) {
 	root := t.TempDir()
 	m := NewManager(root)

@@ -167,14 +167,23 @@ func BuildConfigSingBox(status *BuildStatus, result *BuildResult) {
 			address = append(address, "fdfe:dcba:9876::1/126")
 		}
 		inbound := map[string]interface{}{
-			"tag":            "tun-in",
-			"type":           "tun",
-			"interface_name": genTunName(),
-			"address":        address,
-			"auto_route":     true,
-			"mtu":            mtu,
-			"stack":          vpnImplementation(ds.VPNImplementation),
-			"strict_route":   ds.VPNStrictRoute,
+			"tag":     "tun-in",
+			"type":    "tun",
+			"address": address,
+			"mtu":     mtu,
+			"stack":   vpnImplementation(ds.VPNImplementation),
+		}
+		if ds.VPNTunFd > 0 {
+			// External TUN file descriptor (e.g. Android VpnService).
+			// OS manages routing via VpnService.Builder, so disable auto_route.
+			inbound["file_descriptor"] = ds.VPNTunFd
+			inbound["auto_route"] = false
+			inbound["strict_route"] = false
+		} else {
+			// Desktop TUN mode (Windows/Linux/macOS)
+			inbound["interface_name"] = genTunName()
+			inbound["auto_route"] = true
+			inbound["strict_route"] = ds.VPNStrictRoute
 		}
 		status.Inbounds = append(status.Inbounds, inbound)
 	}

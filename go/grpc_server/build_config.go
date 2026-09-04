@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 
 	"grpc_server/gen"
 
@@ -12,6 +13,25 @@ import (
 	nekokfmt "grpc_server/core/fmt"
 	"grpc_server/core/sub"
 )
+
+var (
+	mobileTunFdMu sync.RWMutex
+	mobileTunFd   int = -1
+)
+
+// SetMobileTunFd records the native TUN file descriptor passed from the mobile platform (e.g. VpnService).
+func SetMobileTunFd(fd int) {
+	mobileTunFdMu.Lock()
+	defer mobileTunFdMu.Unlock()
+	mobileTunFd = fd
+}
+
+// GetMobileTunFd returns the current native TUN file descriptor, or -1 if none is set.
+func GetMobileTunFd() int {
+	mobileTunFdMu.RLock()
+	defer mobileTunFdMu.RUnlock()
+	return mobileTunFd
+}
 
 // BuildConfig implements the gRPC BuildConfig method.
 //
@@ -48,6 +68,9 @@ func (s *BaseServer) BuildConfig(ctx context.Context, in *gen.BuildConfigReq) (*
 			resp.Error = "invalid datastore_json: " + err.Error()
 			return resp, nil
 		}
+	}
+	if ds.VPNTunFd <= 0 && GetMobileTunFd() > 0 {
+		ds.VPNTunFd = GetMobileTunFd()
 	}
 
 	result := config.BuildConfig(&ent, &group, &routing, &ds, in.ForTest, in.ForExport)

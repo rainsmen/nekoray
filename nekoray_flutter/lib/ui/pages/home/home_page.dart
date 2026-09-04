@@ -1,6 +1,7 @@
 // Home page — navigation rail, dashboard, profile list, status bar.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import '../../../core/models/profile.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
+import '../../../core/system/android_vpn.dart';
 import '../../../core/system/system_integration.dart';
 import '../../pages/connections/connections_page.dart';
 import '../../pages/logs/logs_page.dart';
@@ -1093,6 +1095,10 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
   Future<void> _stop(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
+      if (Platform.isAndroid) {
+        await AndroidVpn.stop();
+        ref.read(mobileCoreProvider).setTunFd(-1);
+      }
       if (ref.read(settingsProvider).systemProxy) {
         try {
           await SystemIntegration.disableSystemProxy();
@@ -1116,6 +1122,7 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
     final settings = ref.read(settingsProvider);
     final profileName = profile.name.isEmpty ? profile.address : profile.name;
 
+    int? androidTunFd;
     try {
       ref.read(coreLogProvider.notifier).add('[INFO] Starting proxy for node: $profileName (${profile.type})');
       final connectError =
@@ -1128,11 +1135,27 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
       await client.stopCore();
       ref.read(connectedProfileProvider.notifier).state = 0;
 
+      // On Android, establish VPN through VpnService to obtain an unprivileged TUN fd.
+      if (Platform.isAndroid) {
+        final prepared = await AndroidVpn.prepare();
+        if (!prepared) {
+          throw Exception('VPN permission was denied by the user');
+        }
+        androidTunFd = await AndroidVpn.start(
+          mtu: settings.vpnMtu > 0 ? settings.vpnMtu : 1500,
+          ipv6: settings.vpnIpv6,
+        );
+        if (androidTunFd == null || androidTunFd <= 0) {
+          throw Exception('Failed to establish Android VPN interface');
+        }
+        ref.read(mobileCoreProvider).setTunFd(androidTunFd);
+      }
+
       final routingRaw = await LocalStore.loadRouting('default') ?? {};
       final routing = RoutingConfig.fromJson(routingRaw);
       final grpcRouting = toGrpcRouting(routing);
 
-      final datastore = datastoreJson(settings);
+      final datastore = datastoreJson(settings, androidTunFd: androidTunFd);
 
       final groups = ref.read(groupListProvider).valueOrNull ?? const [];
       final activeGroup = groups.firstWhere(
@@ -1154,7 +1177,7 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
           await client.startCore(resp.coreConfig, enableConnections: true);
       if (startResp.error.isNotEmpty) throw Exception(startResp.error);
 
-      if (settings.systemProxy) {
+      if (settings.systemProxy && !Platform.isAndroid) {
         try {
           await SystemIntegration.enableSystemProxy(
             host: settings.listenAddress,
@@ -1172,10 +1195,14 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
       messenger.showSnackBar(SnackBar(
           content: Text('${I18n.t("connected")}: $profileName')));
     } catch (e) {
+      if (Platform.isAndroid) {
+        await AndroidVpn.stop();
+        ref.read(mobileCoreProvider).setTunFd(-1);
+      }
       ref.read(connectedProfileProvider.notifier).state = 0;
       ref.read(coreLogProvider.notifier).add('[ERROR] Failed to start $profileName: $e');
       var detail = '$e';
-      if (settings.tunMode) {
+      if (settings.tunMode && !Platform.isAndroid) {
         // TUN failures are almost always privilege or stack/MTU issues.
         // Surface the raw core error plus an actionable hint instead of a
         // bare "start failed".
@@ -1202,19 +1229,24 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
 ///
 /// The TUN keys must always be present: omitting them leaves Go zero-values
 /// (notably MTU 0) in the core, which breaks TUN inbound creation.
-Map<String, dynamic> datastoreJson(AppSettings settings) => {
-      'inbound_socks_port': settings.mixedPort,
-      'inbound_address': settings.listenAddress,
-      'spmode_vpn': settings.tunMode,
-      'vpn_internal_tun': settings.tunMode,
-      'vpn_mtu': settings.vpnMtu,
-      'vpn_implementation': settings.vpnStack,
-      'vpn_strict_route': settings.vpnStrictRoute,
-      'vpn_ipv6': settings.vpnIpv6,
-      'fake_dns': settings.fakeDns,
-      'spmode_system_proxy': settings.systemProxy,
-      'log_level': settings.logLevel,
-    };
+Map<String, dynamic> datastoreJson(AppSettings settings, {int? androidTunFd}) {
+  final isAndroid = Platform.isAndroid;
+  final tun = isAndroid ? true : settings.tunMode;
+  return {
+    'inbound_socks_port': settings.mixedPort,
+    'inbound_address': settings.listenAddress,
+    'spmode_vpn': tun,
+    'vpn_internal_tun': tun,
+    'vpn_mtu': settings.vpnMtu,
+    'vpn_implementation': settings.vpnStack,
+    'vpn_strict_route': isAndroid ? false : settings.vpnStrictRoute,
+    'vpn_ipv6': settings.vpnIpv6,
+    'vpn_tun_fd': androidTunFd ?? 0,
+    'fake_dns': settings.fakeDns,
+    'spmode_system_proxy': isAndroid ? false : settings.systemProxy,
+    'log_level': settings.logLevel,
+  };
+}
 
 /// Builds a throwaway sing-box config for [profile] and measures HTTP
 /// latency through it with a core-side UrlTest. Returns milliseconds.

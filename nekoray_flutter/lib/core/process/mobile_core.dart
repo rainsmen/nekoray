@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core_process.dart';
 
@@ -27,6 +28,10 @@ typedef _FreeC = Void Function(Pointer<Utf8> s);
 typedef _FreeDart = void Function(Pointer<Utf8> s);
 typedef _StopC = Void Function();
 typedef _StopDart = void Function();
+typedef _InitPathsC = Void Function(Pointer<Utf8> dataDir, Pointer<Utf8> cacheDir);
+typedef _InitPathsDart = void Function(Pointer<Utf8> dataDir, Pointer<Utf8> cacheDir);
+typedef _SetTunFdC = Void Function(Int32 fd);
+typedef _SetTunFdDart = void Function(int fd);
 
 /// Supervises the in-process Android core.
 class MobileCoreProcess {
@@ -90,6 +95,22 @@ class MobileCoreProcess {
       );
     }
 
+    // Initialize sandbox paths for Android so ruleset cache and temporary
+    // files are stored within the app sandbox without permission errors.
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final cacheDir = await getTemporaryDirectory();
+      final initPaths =
+          lib.lookupFunction<_InitPathsC, _InitPathsDart>('NekoboxInitPaths');
+      final dataDirPtr = supportDir.path.toNativeUtf8();
+      final cacheDirPtr = cacheDir.path.toNativeUtf8();
+      initPaths(dataDirPtr, cacheDirPtr);
+      calloc.free(dataDirPtr);
+      calloc.free(cacheDirPtr);
+    } catch (_) {
+      // Best-effort: keep starting even if path lookup fails
+    }
+
     final token = CoreProcess.generateToken();
     final start = lib.lookupFunction<_StartC, _StartDart>('NekoboxStart');
     final free = lib.lookupFunction<_FreeC, _FreeDart>('NekoboxFree');
@@ -109,8 +130,19 @@ class MobileCoreProcess {
     return CoreEndpoint(host: '127.0.0.1', port: port, token: token);
   }
 
+  /// Sets the native TUN file descriptor created by Android VpnService.
+  void setTunFd(int fd) {
+    try {
+      final lib = _load();
+      lib.lookupFunction<_SetTunFdC, _SetTunFdDart>('NekoboxSetTunFd')(fd);
+    } catch (_) {
+      // Ignored if library is not yet loaded or symbol not present
+    }
+  }
+
   /// Stops the in-process core.
   Future<void> stop() async {
+    setTunFd(-1);
     _endpoint = null;
     final lib = _lib;
     if (lib == null) return;

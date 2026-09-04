@@ -44,7 +44,9 @@ class SettingsPage extends ConsumerWidget {
                   title: Text(t('systemProxy')),
                   subtitle: Text(SystemIntegration.supportsSystemProxy
                       ? 'Point the OS at ${settings.listenAddress}:${settings.mixedPort}'
-                      : 'Not available on this desktop environment'),
+                      : (Platform.isAndroid
+                          ? 'Android uses VPN mode to route traffic'
+                          : 'Not available on this desktop environment')),
                   value: settings.systemProxy,
                   onChanged: SystemIntegration.supportsSystemProxy
                       ? (v) => _guard(context, () => notifier.setSystemProxy(v))
@@ -54,12 +56,14 @@ class SettingsPage extends ConsumerWidget {
                 SwitchListTile(
                   secondary: const Icon(Icons.vpn_lock),
                   title: Text(t('tunMode')),
-                  subtitle: const Text(
-                      'Route all traffic through a virtual interface. '
-                      'Requires elevated privileges.'),
-                  value: settings.tunMode,
-                  onChanged: (v) =>
-                      _guard(context, () => notifier.setTunMode(v)),
+                  subtitle: Text(Platform.isAndroid
+                      ? 'Route traffic through Android VpnService (No root required)'
+                      : 'Route all traffic through a virtual interface. '
+                          'Requires elevated privileges.'),
+                  value: Platform.isAndroid ? true : settings.tunMode,
+                  onChanged: Platform.isAndroid
+                      ? null
+                      : (v) => _guard(context, () => notifier.setTunMode(v)),
                 ),
               ],
             ),

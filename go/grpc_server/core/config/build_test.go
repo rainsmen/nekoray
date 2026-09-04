@@ -345,6 +345,54 @@ func TestBuildTunInboundUsesModernAddressField(t *testing.T) {
 	}
 }
 
+func TestBuildTunInboundWithFileDescriptor(t *testing.T) {
+	bean := &nekokfmt.ShadowSocksBean{
+		AbstractBean: nekokfmt.AbstractBean{
+			ServerAddress: "5.6.7.8",
+			ServerPort:    8388,
+		},
+		Method:   "aes-256-gcm",
+		Password: "secret",
+	}
+	beanBytes, _ := json.Marshal(bean)
+
+	ent := &nekokfmt.ProxyEntity{
+		Type: "shadowsocks",
+		Id:   3,
+		Bean: beanBytes,
+	}
+	routing := &nekokfmt.Routing{DefOutbound: "proxy"}
+	ds := &nekokfmt.DataStore{
+		LogLevel:             "info",
+		InboundAddress:       "127.0.0.1",
+		InboundSocksPort:     2080,
+		SpmodeVPN:            true,
+		VPNInternalTun:       true,
+		VPNMTU:               1500,
+		VPNTunFd:             42,
+		CoreBoxUnderlyingDNS: "local",
+	}
+
+	result := BuildConfig(ent, nil, routing, ds, false, false)
+	if result.Error != "" {
+		t.Fatalf("BuildConfig error: %s", result.Error)
+	}
+
+	configFlat := strings.ReplaceAll(prettyJSON(t, result.CoreConfig), " ", "")
+	configFlat = strings.ReplaceAll(configFlat, "\n", "")
+	configFlat = strings.ReplaceAll(configFlat, "\t", "")
+
+	if !strings.Contains(configFlat, `"file_descriptor":42`) {
+		t.Fatalf("config missing file_descriptor:42:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	if !strings.Contains(configFlat, `"auto_route":false`) {
+		t.Fatalf("config should have auto_route:false for external tun fd:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+	if strings.Contains(configFlat, `"interface_name"`) {
+		t.Fatalf("config should not contain interface_name when file_descriptor is set:\n%s", prettyJSON(t, result.CoreConfig))
+	}
+}
+
 // TestBuildEnablesV2RayStats guards the dashboard traffic graph: without the
 // v2ray_api stats service, outbound counters are never created and every
 // QueryStats call reports 0, leaving up/down rates permanently at zero.

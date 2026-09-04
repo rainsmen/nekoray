@@ -10,15 +10,24 @@ import (
 
 // ruleSetMgr is the process-wide rule_set cache manager.
 var (
-	ruleSetMgr     *ruleset.Manager
-	ruleSetMgrOnce sync.Once
+	ruleSetMgr *ruleset.Manager
+	ruleSetMu  sync.Mutex
 )
 
 func getRuleSetMgr() *ruleset.Manager {
-	ruleSetMgrOnce.Do(func() {
+	ruleSetMu.Lock()
+	defer ruleSetMu.Unlock()
+	if ruleSetMgr == nil {
 		ruleSetMgr = ruleset.NewManager("")
-	})
+	}
 	return ruleSetMgr
+}
+
+// SetRuleSetCacheDir overrides the rule_set cache directory.
+func SetRuleSetCacheDir(dir string) {
+	ruleSetMu.Lock()
+	defer ruleSetMu.Unlock()
+	ruleSetMgr = ruleset.NewManager(dir)
 }
 
 // UpdateRuleSet registers and optionally downloads a remote rule_set.

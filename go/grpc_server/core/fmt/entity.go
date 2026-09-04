@@ -103,6 +103,7 @@ type DataStore struct {
 	VPNRuleWhite      bool   `json:"vpn_rule_white"`
 	VPNRuleProcess    string `json:"vpn_rule_process"`
 	VPNRuleCIDR       string `json:"vpn_rule_cidr"`
+	VPNTunFd          int    `json:"vpn_tun_fd"`
 
 	// Custom inbound
 	CustomInbound string `json:"custom_inbound"`

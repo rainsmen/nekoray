@@ -154,6 +154,12 @@ func (m *Manager) saveIndexLocked() error {
 // defaultCacheDir returns an absolute cache directory that does not depend on
 // the process working directory (which the GUI does not control).
 func defaultCacheDir() string {
+	if d := os.Getenv("NEKORAY_CACHE_DIR"); d != "" {
+		return filepath.Join(d, "ruleset")
+	}
+	if d := os.Getenv("NEKORAY_DATA_DIR"); d != "" {
+		return filepath.Join(d, "ruleset")
+	}
 	if d, err := os.UserCacheDir(); err == nil {
 		return filepath.Join(d, "nekoray", "ruleset")
 	}
