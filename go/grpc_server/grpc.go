@@ -141,23 +141,95 @@ func watchParent() {
 
 // RunCore starts the gRPC server and blocks until it stops.
 func RunCore(token string, port int, debug bool, server gen.LibcoreServiceServer) {
+	lis, s, err := bindCore(token, port, debug, server)
+	if err != nil {
+		if _, ok := err.(*bindError); ok {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	// Report the actual port so a caller that passed 0 can discover it.
+	fmt.Printf("nekobox_core listening on %v\n", lis.Addr())
+	log.Printf("nekobox_core grpc server listening at %v\n", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+// RunCoreBound starts the gRPC server like RunCore, but returns once the
+// listener is bound (the server keeps running) instead of blocking. It
+// exists for the Android in-process core, which has no stdout for the
+// desktop "listening on" handshake — a nil return means the port is
+// connectable right away.
+func RunCoreBound(token string, port int, debug bool, server gen.LibcoreServiceServer) error {
+	lis, s, err := bindCore(token, port, debug, server)
+	if err != nil {
+		return err
+	}
+	log.Printf("nekobox_core grpc server listening at %v\n", lis.Addr())
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			log.Printf("grpc server stopped: %v", err)
+		}
+	}()
+	return nil
+}
+
+// StopServer gracefully stops a server started by RunCore/RunCoreBound and
+// releases its box instance, so the core can be started again in-process.
+// No-op when nothing is running.
+func StopServer() {
+	shutdown.Lock()
+	fn := shutdown.fn
+	cleanup := shutdown.cleanup
+	shutdown.fn = nil
+	shutdown.cleanup = nil
+	shutdown.requested = false
+	shutdown.Unlock()
+
+	if cleanup != nil {
+		cleanup()
+	}
+	if fn == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+	}
+}
+
+// bindError marks fatal configuration errors (as opposed to listen/serve
+// failures) so callers can reproduce RunCore's exit paths.
+type bindError struct{ msg string }
+
+func (e *bindError) Error() string { return e.msg }
+
+// bindCore performs everything RunCore does up to accepting connections and
+// hands back the bound listener and server.
+func bindCore(token string, port int, debug bool, server gen.LibcoreServiceServer) (net.Listener, *grpc.Server, error) {
 	Debug = debug
 
 	go watchParent()
 
 	token = resolveToken(token)
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "You must set a token")
-		os.Exit(1)
+		return nil, nil, &bindError{"You must set a token"}
 	}
 	if len(token) < 16 {
-		fmt.Fprintln(os.Stderr, "Token must be at least 16 characters")
-		os.Exit(1)
+		return nil, nil, &bindError{"Token must be at least 16 characters"}
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		return nil, nil, err
 	}
 	os.Stderr.WriteString("token is set\n")
 
@@ -174,10 +246,5 @@ func RunCore(token string, port int, debug bool, server gen.LibcoreServiceServer
 	shutdown.requested = false
 	shutdown.Unlock()
 
-	// Report the actual port so a caller that passed 0 can discover it.
-	fmt.Printf("nekobox_core listening on %v\n", lis.Addr())
-	log.Printf("nekobox_core grpc server listening at %v\n", lis.Addr())
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+	return lis, s, nil
 }

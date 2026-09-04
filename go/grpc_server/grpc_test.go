@@ -36,3 +36,18 @@ func TestExitRunsShutdownHookOnce(t *testing.T) {
 		t.Fatalf("shutdown hook called %d times, want once", got)
 	}
 }
+
+// TestRunCoreBoundRestart proves the Android lifecycle: bind (nil means the
+// port is connectable), stop cleanly, and bind again. Port 0 lets the OS
+// pick, avoiding collisions on shared CI runners.
+func TestRunCoreBoundRestart(t *testing.T) {
+	const token = "0123456789abcdef0123456789abcdef"
+	for i := 0; i < 2; i++ {
+		if err := RunCoreBound(token, 0, false, &BaseServer{}); err != nil {
+			t.Fatalf("cycle %d: RunCoreBound: %v", i, err)
+		}
+		StopServer()
+	}
+	// Stopping an idle server must not panic or hang.
+	StopServer()
+}

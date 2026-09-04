@@ -165,6 +165,25 @@ jobs:
         working-directory: nekoray_flutter
         run: flutter create --platforms=android .
 
+      # The Go core rides inside the APK (jniLibs) — without this the app
+      # starts but finds no core to talk to. build_android.sh names ABIs
+      # arm64/arm/x86_64; gradle wants arm64-v8a/armeabi-v7a/x86_64.
+      - name: Stage Go core .so into jniLibs
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage() {
+            local src="deployment/android/$1/libnekobox.so"
+            local dest="nekoray_flutter/android/app/src/main/jniLibs/$2"
+            [ -f "$src" ] || { echo "::error::missing $src"; exit 1; }
+            mkdir -p "$dest"
+            cp -f "$src" "$dest/"
+          }
+          stage arm64 arm64-v8a
+          stage arm armeabi-v7a
+          stage x86_64 x86_64
+          find nekoray_flutter/android/app/src/main/jniLibs -type f
+
       - name: Apply app icon
         working-directory: nekoray_flutter
         run: dart run flutter_launcher_icons

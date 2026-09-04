@@ -5,9 +5,12 @@
 // authenticated channel. Previously the UI connected with an empty token to a
 // core nobody had started, so every RPC failed with UNAUTHENTICATED.
 
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../process/core_process.dart';
+import '../process/mobile_core.dart';
 import '../storage/local_store.dart';
 import 'grpc_client.dart';
 
@@ -16,8 +19,8 @@ import 'grpc_client.dart';
 /// Every line is also appended to `<appDir>/logs/core-YYYY-MM-DD.log` so a
 /// TUN/startup failure can still be diagnosed after restart. The file write
 /// is fire-and-forget and never blocks the UI.
-final coreLogProvider =
-    StateNotifierProvider<CoreLogNotifier, List<String>>((ref) => CoreLogNotifier());
+final coreLogProvider = StateNotifierProvider<CoreLogNotifier, List<String>>(
+    (ref) => CoreLogNotifier());
 
 class CoreLogNotifier extends StateNotifier<List<String>> {
   CoreLogNotifier() : super(const []);
@@ -26,9 +29,8 @@ class CoreLogNotifier extends StateNotifier<List<String>> {
 
   void add(String line) {
     final next = [...state, line];
-    state = next.length > _maxLines
-        ? next.sublist(next.length - _maxLines)
-        : next;
+    state =
+        next.length > _maxLines ? next.sublist(next.length - _maxLines) : next;
     LocalStore.appendCoreLog(line);
   }
 
@@ -40,6 +42,14 @@ final coreProcessProvider = Provider<CoreProcess>((ref) {
   final proc = CoreProcess(
     onLog: (line) => ref.read(coreLogProvider.notifier).add(line),
   );
+  ref.onDispose(proc.stop);
+  return proc;
+});
+
+/// Supervisor for the Android in-process core (libnekobox.so via FFI).
+/// Desktop never touches it; Android never spawns a child process.
+final mobileCoreProvider = Provider<MobileCoreProcess>((ref) {
+  final proc = MobileCoreProcess();
   ref.onDispose(proc.stop);
   return proc;
 });
@@ -68,8 +78,8 @@ final coreConnectionProvider = StateProvider<CoreConnection>(
     (ref) => const CoreConnection(CoreConnectionState.disconnected));
 
 /// Kept for call sites that only need a boolean.
-final grpcConnectedProvider = Provider<bool>(
-    (ref) => ref.watch(coreConnectionProvider).isConnected);
+final grpcConnectedProvider =
+    Provider<bool>((ref) => ref.watch(coreConnectionProvider).isConnected);
 
 /// Starts the core (if needed) and opens an authenticated channel.
 ///
@@ -86,8 +96,19 @@ Future<String?> connectToCore(
   final client = ref.read(grpcClientProvider);
 
   try {
-    final endpoint =
-        await proc.ensureStarted(requestedPort: requestedPort, debug: debug);
+    // Android has no executable to spawn: start the bundled .so in-process,
+    // then talk to it over the same loopback gRPC channel as desktop.
+    final CoreEndpoint endpoint;
+    if (Platform.isAndroid) {
+      final mobile = await ref.read(mobileCoreProvider).ensureStarted(
+            requestedPort: requestedPort,
+          );
+      endpoint = CoreEndpoint(
+          host: mobile.host, port: mobile.port, token: mobile.token);
+    } else {
+      endpoint =
+          await proc.ensureStarted(requestedPort: requestedPort, debug: debug);
+    }
     await client.connect(
       host: endpoint.host,
       port: endpoint.port,
@@ -95,11 +116,15 @@ Future<String?> connectToCore(
     );
     connection.state =
         CoreConnection(CoreConnectionState.connected, port: endpoint.port);
-    ref.read(coreLogProvider.notifier).add('[INFO] Connected to nekobox_core on port ${endpoint.port}');
+    ref
+        .read(coreLogProvider.notifier)
+        .add('[INFO] Connected to nekobox_core on port ${endpoint.port}');
     return null;
   } catch (e) {
     final message = e is CoreProcessException ? e.message : e.toString();
-    ref.read(coreLogProvider.notifier).add('[ERROR] Core connection error: $message');
+    ref
+        .read(coreLogProvider.notifier)
+        .add('[ERROR] Core connection error: $message');
     connection.state =
         CoreConnection(CoreConnectionState.failed, error: message);
     return message;
@@ -116,7 +141,11 @@ Future<String?> ensureConnected(WidgetRef ref, {int requestedPort = 0}) async {
 /// Disconnects and stops the core.
 Future<void> disconnectFromCore(WidgetRef ref) async {
   await ref.read(grpcClientProvider).disconnect();
-  await ref.read(coreProcessProvider).stop();
+  if (Platform.isAndroid) {
+    await ref.read(mobileCoreProvider).stop();
+  } else {
+    await ref.read(coreProcessProvider).stop();
+  }
   ref.read(coreConnectionProvider.notifier).state =
       const CoreConnection(CoreConnectionState.disconnected);
 }

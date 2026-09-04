@@ -3,6 +3,8 @@
 ## v5.0.1 — Logo 换新 (2026-09-04)
 
 - 应用图标更换为全幅霓虹猫（`assets/icon/app_logo.png`），原生启动图标与应用内同步更新。
+- Android：core 改为随 APK 内置的 `libnekobox.so` 进程内启动（FFI），修复启动即报
+  `nekobox_core binary not found`；订阅/节点/测速走同一 gRPC 通道（VPN/TUN 模式后续迭代）。
 
 ## v5.0.0 — 首个正式版 (2026-09-04)
 
