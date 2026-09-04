@@ -32,6 +32,13 @@ class AppSettings {
   final bool vpnStrictRoute;
   final bool fakeDns;
 
+  /// 0 indigo, 1 teal, 2 purple, 3 orange. Only changes the seed color.
+  final int accent;
+
+  /// Subscription auto-refresh interval in hours (0 = off) + last run stamp.
+  final int subAutoUpdateHours;
+  final int subAutoUpdatedAt;
+
   const AppSettings({
     this.systemProxy = false,
     this.tunMode = false,
@@ -53,6 +60,9 @@ class AppSettings {
     this.vpnIpv6 = false,
     this.vpnStrictRoute = false,
     this.fakeDns = false,
+    this.accent = 0,
+    this.subAutoUpdateHours = 0,
+    this.subAutoUpdatedAt = 0,
   });
 
   AppSettings copyWith({
@@ -72,6 +82,9 @@ class AppSettings {
     bool? vpnIpv6,
     bool? vpnStrictRoute,
     bool? fakeDns,
+    int? accent,
+    int? subAutoUpdateHours,
+    int? subAutoUpdatedAt,
   }) =>
       AppSettings(
         systemProxy: systemProxy ?? this.systemProxy,
@@ -90,6 +103,9 @@ class AppSettings {
         vpnIpv6: vpnIpv6 ?? this.vpnIpv6,
         vpnStrictRoute: vpnStrictRoute ?? this.vpnStrictRoute,
         fakeDns: fakeDns ?? this.fakeDns,
+        accent: accent ?? this.accent,
+        subAutoUpdateHours: subAutoUpdateHours ?? this.subAutoUpdateHours,
+        subAutoUpdatedAt: subAutoUpdatedAt ?? this.subAutoUpdatedAt,
       );
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -109,6 +125,9 @@ class AppSettings {
         vpnIpv6: j['vpn_ipv6'] == true,
         vpnStrictRoute: j['vpn_strict_route'] == true,
         fakeDns: j['fake_dns'] == true,
+        accent: _int(j['accent'], 0),
+        subAutoUpdateHours: _int(j['sub_auto_update_hours'], 0),
+        subAutoUpdatedAt: _int(j['sub_auto_updated_at'], 0),
       );
 
   Map<String, dynamic> toJson() => {
@@ -128,6 +147,9 @@ class AppSettings {
         'vpn_ipv6': vpnIpv6,
         'vpn_strict_route': vpnStrictRoute,
         'fake_dns': fakeDns,
+        'accent': accent,
+        'sub_auto_update_hours': subAutoUpdateHours,
+        'sub_auto_updated_at': subAutoUpdatedAt,
       };
 
   static int _int(Object? v, int fallback) {
@@ -227,6 +249,26 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       _persist(state.copyWith(vpnStrictRoute: v));
 
   Future<void> setFakeDns(bool v) => _persist(state.copyWith(fakeDns: v));
+
+  Future<void> setAccent(int v) async {
+    if (v < 0 || v > 3) {
+      throw ArgumentError('Unknown accent $v');
+    }
+    await _persist(state.copyWith(accent: v));
+  }
+
+  Future<void> setSubAutoUpdate(int hours) async {
+    if (![0, 6, 12, 24].contains(hours)) {
+      throw ArgumentError('Unsupported interval $hours');
+    }
+    await _persist(state.copyWith(subAutoUpdateHours: hours));
+  }
+
+  Future<void> markSubsAutoUpdated() async {
+    await _persist(state.copyWith(
+        subAutoUpdatedAt:
+            DateTime.now().millisecondsSinceEpoch ~/ 1000));
+  }
 
   /// Applies the OS-level auto-start entry, then records the outcome.
   Future<void> setAutoStart(bool v) async {

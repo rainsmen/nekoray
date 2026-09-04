@@ -4,8 +4,16 @@ import 'package:flutter/material.dart';
 /// App theme definitions — Modern Material 3 with elegant Dark, Light, and System modes.
 /// Includes Windows typography enhancements with Microsoft YaHei UI / Segoe UI font fallbacks.
 class AppTheme {
-  // Primary brand accent: Vibrant Indigo
-  static const _primarySeed = Color(0xFF4F46E5);
+  // Brand accent seeds selectable in Settings: indigo / teal / purple / orange.
+  static const accentSeeds = [
+    Color(0xFF4F46E5),
+    Color(0xFF0D9488),
+    Color(0xFF9333EA),
+    Color(0xFFEA580C),
+  ];
+
+  static Color _seedFor(int accent) =>
+      accentSeeds[accent.clamp(0, accentSeeds.length - 1)];
 
   static const List<String> fontFallbacks = [
     'Microsoft YaHei UI',
@@ -52,9 +60,9 @@ class AppTheme {
     );
   }
 
-  static ThemeData light() {
+  static ThemeData light({int accent = 0}) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: _primarySeed,
+      seedColor: _seedFor(accent),
       brightness: Brightness.light,
       surface: const Color(0xFFF8FAFC), // Slate-50 clean background
       surfaceContainerLowest: const Color(0xFFFFFFFF), // Pure white cards
@@ -71,9 +79,9 @@ class AppTheme {
     return _buildThemeData(scheme, Brightness.light);
   }
 
-  static ThemeData dark() {
+  static ThemeData dark({int accent = 0}) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: _primarySeed,
+      seedColor: _seedFor(accent),
       brightness: Brightness.dark,
       surface: const Color(0xFF0F172A), // Slate-900 dark background
       surfaceContainerLowest: const Color(0xFF0B0F19),

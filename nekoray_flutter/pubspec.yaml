@@ -1,7 +1,7 @@
 name: nekoray
 description: A modern cross-platform proxy client (sing-box backend).
 publish_to: "none"
-version: 5.0.0-beta.17
+version: 5.0.0
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -33,6 +33,7 @@ dependencies:
   # Utils
   collection: ^1.18.0
   file_picker: ^12.2.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -40,6 +41,7 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   integration_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -48,3 +50,20 @@ flutter:
     # Required: I18n.load reads these at runtime. Without this declaration the
     # files are absent from release bundles and translations silently vanish.
     - assets/l10n/
+    # App logo (in-app rail/about only; the file doubles as the launcher-icon
+    # source, see flutter_launcher_icons below).
+    - assets/icon/app_logo.png
+
+# Native launcher icons are generated from assets/icon/app_logo.png via
+# `dart run flutter_launcher_icons` (also wired into CI after
+# `flutter create`, which would otherwise reset platform artwork).
+flutter_launcher_icons:
+  image_path: "assets/icon/app_logo.png"
+  android: true
+  ios: false
+  macos:
+    generate: true
+  windows:
+    generate: true
+  linux:
+    generate: true

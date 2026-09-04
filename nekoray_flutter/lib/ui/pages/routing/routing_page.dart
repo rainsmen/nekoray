@@ -11,6 +11,7 @@ import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/storage/local_store.dart';
+import '../dns/dns_page.dart';
 
 /// Routing config (loaded from routing_default.json).
 final routingConfigProvider =
@@ -285,7 +286,6 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
       state = AsyncValue.data(next);
     }
   }
-
   Future<void> removeRule(int index) async {
     final c = state.valueOrNull;
     if (c == null) return;
@@ -296,6 +296,26 @@ class RoutingConfigNotifier extends StateNotifier<AsyncValue<RoutingConfig>> {
       await LocalStore.saveRouting('default', next.toJson());
       state = AsyncValue.data(next);
     }
+  }
+
+  /// Moves a rule one step, because sing-box executes the first matching
+  /// rule. Without ordering controls a misplaced rule silently breaks routing.
+  Future<void> moveRule(int index, int delta) async {
+    final c = state.valueOrNull;
+    if (c == null) return;
+    final rules = List<RoutingRule>.from(c.rules);
+    final target = index + delta;
+    if (index < 0 ||
+        index >= rules.length ||
+        target < 0 ||
+        target >= rules.length) {
+      return;
+    }
+    final rule = rules.removeAt(index);
+    rules.insert(target, rule);
+    final next = c.copyWith(rules: rules);
+    await LocalStore.saveRouting('default', next.toJson());
+    state = AsyncValue.data(next);
   }
 
   Future<void> setRuleForTag({
@@ -505,7 +525,7 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -616,6 +636,10 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                 Tab(
                   icon: const Icon(Icons.layers_outlined, size: 18),
                   text: I18n.t('ruleSets'),
+                ),
+                Tab(
+                  icon: const Icon(Icons.dns_outlined, size: 18),
+                  text: I18n.t('dns'),
                 ),
               ],
             ),
@@ -821,6 +845,27 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                               children: [
                                 Row(
                                   children: [
+                                    Container(
+                                      width: 26,
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: scheme.primary
+                                            .withOpacity(0.12),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '#${i + 1}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: scheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
                                     Icon(
                                       _getRuleIcon(r),
                                       size: 20,
@@ -906,6 +951,30 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                                           .updateRuleOutbound(i, 'block'),
                                     ),
                                     const Spacer(),
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.arrow_upward_outlined,
+                                          size: 18),
+                                      tooltip: I18n.t('moveUp'),
+                                      onPressed: i <= 0
+                                          ? null
+                                          : () => ref
+                                              .read(routingConfigProvider
+                                                  .notifier)
+                                              .moveRule(i, -1),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.arrow_downward_outlined,
+                                          size: 18),
+                                      tooltip: I18n.t('moveDown'),
+                                      onPressed: i >= c.rules.length - 1
+                                          ? null
+                                          : () => ref
+                                              .read(routingConfigProvider
+                                                  .notifier)
+                                              .moveRule(i, 1),
+                                    ),
                                     IconButton(
                                       icon: const Icon(Icons.edit_outlined, size: 18),
                                       tooltip: I18n.t('edit'),
@@ -1171,6 +1240,8 @@ class _RoutingPageState extends ConsumerState<RoutingPage>
                   ],
                 ),
               ),
+              // Tab 3: DNS settings (merged here so mobile nav stays ≤5)
+              const DnsPage(),
             ],
           ),
         );

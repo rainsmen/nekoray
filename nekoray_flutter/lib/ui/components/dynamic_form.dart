@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/i18n.dart';
 import '../schema/protocol_schema.dart';
 
 class DynamicForm extends StatefulWidget {
@@ -120,13 +121,14 @@ class DynamicFormState extends State<DynamicForm> {
   String? validate() {
     for (final f in widget.fields) {
       if (!f.required) continue;
+      final label = schemaLabel(f);
       final raw = _controllers[f.inputKey]?.text.trim() ?? '';
-      if (raw.isEmpty) return '${f.label} is required';
+      if (raw.isEmpty) return I18n.t('formFieldRequired', {'label': label});
       if (f.type == FieldType.number) {
         final n = int.tryParse(raw);
-        if (n == null) return '${f.label} must be a number';
+        if (n == null) return I18n.t('formMustBeNumber', {'label': label});
         if (f.key == 'port' && (n < 1 || n > 65535)) {
-          return 'Port must be between 1 and 65535';
+          return I18n.t('formPortRange');
         }
       }
     }
@@ -135,7 +137,7 @@ class DynamicFormState extends State<DynamicForm> {
     if (portRaw != null && portRaw.isNotEmpty) {
       final n = int.tryParse(portRaw);
       if (n == null || n < 1 || n > 65535) {
-        return 'Port must be between 1 and 65535';
+        return I18n.t('formPortRange');
       }
     }
     return null;
@@ -156,7 +158,8 @@ class DynamicFormState extends State<DynamicForm> {
         return _padded(TextFormField(
           controller: _controllers[f.inputKey],
           decoration: InputDecoration(
-            labelText: f.required ? '${f.label} *' : f.label,
+            labelText:
+                f.required ? '${schemaLabel(f)} *' : schemaLabel(f),
             hintText: f.hint,
             border: const OutlineInputBorder(),
           ),
@@ -168,7 +171,8 @@ class DynamicFormState extends State<DynamicForm> {
         return _padded(TextFormField(
           controller: _controllers[f.inputKey],
           decoration: InputDecoration(
-            labelText: f.required ? '${f.label} *' : f.label,
+            labelText:
+                f.required ? '${schemaLabel(f)} *' : schemaLabel(f),
             hintText: f.hint,
             border: const OutlineInputBorder(),
           ),
@@ -192,7 +196,7 @@ class DynamicFormState extends State<DynamicForm> {
         return _padded(DropdownButtonFormField<String>(
           initialValue: value,
           decoration: InputDecoration(
-            labelText: f.label,
+            labelText: schemaLabel(f),
             border: const OutlineInputBorder(),
           ),
           items: items
@@ -211,7 +215,7 @@ class DynamicFormState extends State<DynamicForm> {
           padding: const EdgeInsets.only(bottom: 8),
           child: CheckboxListTile(
             value: _bools[f.inputKey] ?? false,
-            title: Text(f.label),
+            title: Text(schemaLabel(f)),
             subtitle: f.hint == null ? null : Text(f.hint!),
             onChanged: (v) => setState(() => _bools[f.inputKey] = v ?? false),
           ),

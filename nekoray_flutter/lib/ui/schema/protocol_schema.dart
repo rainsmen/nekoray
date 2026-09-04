@@ -8,6 +8,17 @@
 // bean itself or in the nested `stream` object. These must stay in sync with
 // the Go structs — a mismatched key is silently dropped by the core.
 
+import '../../core/i18n.dart';
+
+/// Localized display label for [f]. Looks up `fld_<inputKey>` in the string
+/// table and falls back to the schema's English label when untranslated, so
+/// a missing key degrades to English instead of a raw key.
+String schemaLabel(FieldSchema f) {
+  final k = 'fld_${f.inputKey}';
+  final v = I18n.t(k);
+  return v == k ? f.label : v;
+}
+
 enum FieldType { text, number, password, combo, bool_, multiline }
 
 /// Where a field is written inside the profile bean.

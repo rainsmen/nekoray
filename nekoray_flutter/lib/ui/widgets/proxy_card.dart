@@ -1,5 +1,52 @@
 import 'package:flutter/material.dart';
 
+/// Maps common region keywords in node remarks to flag emoji, so nodes are
+/// visually distinguishable at a glance. Latin codes need word boundaries
+/// (so e.g. "Sakura" does not match KR); CJK names match by substring.
+String nodeFlag(String name) {
+  const latin = {
+    'HK': '🇭🇰',
+    'TW': '🇹🇼',
+    'JP': '🇯🇵',
+    'US': '🇺🇸',
+    'SG': '🇸🇬',
+    'KR': '🇰🇷',
+    'UK': '🇬🇧',
+    'DE': '🇩🇪',
+    'FR': '🇫🇷',
+    'NL': '🇳🇱',
+    'CA': '🇨🇦',
+    'AU': '🇦🇺',
+    'IN': '🇮🇳',
+    'RU': '🇷🇺',
+    'CN': '🇨🇳',
+  };
+  final upper = name.toUpperCase();
+  for (final e in latin.entries) {
+    if (RegExp('\\b${e.key}\\b').hasMatch(upper)) return e.value;
+  }
+  const cjk = {
+    '香港': '🇭🇰',
+    '台湾': '🇹🇼',
+    '日本': '🇯🇵',
+    '美国': '🇺🇸',
+    '新加坡': '🇸🇬',
+    '韩国': '🇰🇷',
+    '英国': '🇬🇧',
+    '德国': '🇩🇪',
+    '法国': '🇫🇷',
+    '荷兰': '🇳🇱',
+    '加拿大': '🇨🇦',
+    '澳大利亚': '🇦🇺',
+    '印度': '🇮🇳',
+    '俄罗斯': '🇷🇺',
+  };
+  for (final e in cjk.entries) {
+    if (name.contains(e.key)) return e.value;
+  }
+  return '';
+}
+
 /// A card representing a single proxy profile.
 ///
 /// The node remark ([name]) is the primary line; the raw [address] and the
@@ -45,6 +92,13 @@ class ProxyCard extends StatelessWidget {
       return isDark ? Colors.amber.shade400 : Colors.amber.shade800;
     }
     return isDark ? Colors.red.shade400 : Colors.red.shade700;
+  }
+
+  /// Primary line: remark (flag-prefixed) or raw address fallback.
+  String get _displayName {
+    final base = name.isEmpty ? address : name;
+    final flag = nodeFlag(name);
+    return flag.isEmpty ? base : '$flag $base';
   }
 
   /// Secondary line. Nodes with a remark show `address · group`; nodes
@@ -125,7 +179,7 @@ class ProxyCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name.isEmpty ? address : name,
+                      _displayName,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: connected ? FontWeight.bold : FontWeight.w600,

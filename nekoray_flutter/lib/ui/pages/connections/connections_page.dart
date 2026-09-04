@@ -254,6 +254,14 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
   bool _isTestingAll = false;
   bool _isStartingOrStopping = false;
 
+  // Egress IPs: direct (domestic) vs through the running proxy (overseas).
+  String? _directIp;
+  String? _directSrc;
+  String? _proxyIp;
+  String? _proxySrc;
+  bool _ipLoading = false;
+  bool _ipAutoFetched = false;
+
   SiteTestResult _getResult(String id) =>
       _results[id] ?? const SiteTestResult();
 
@@ -324,6 +332,84 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
         setState(() => _isTestingAll = false);
       }
     }
+  }
+
+  /// Queries egress IPs. Direct fetch shows the domestic exit; fetching
+  /// through the local mixed inbound shows the overseas exit, so it only
+  /// runs while the proxy is up. Multiple sources are tried in order.
+  Future<void> _refreshIps() async {
+    if (_ipLoading) return;
+    setState(() => _ipLoading = true);
+    try {
+      final settings = ref.read(settingsProvider);
+      final running =
+          ref.read(connectedProfileProvider) > 0 && settings.mixedPort > 0;
+      final direct = await _fetchIp(useProxy: false, port: 0);
+      (String, String)? proxy;
+      if (running) {
+        proxy = await _fetchIp(useProxy: true, port: settings.mixedPort);
+      }
+      if (!mounted) return;
+      setState(() {
+        _directIp = direct?.$1;
+        _directSrc = direct?.$2;
+        _proxyIp = proxy?.$1;
+        _proxySrc = proxy?.$2;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _ipLoading = false);
+      }
+    }
+  }
+
+  /// Returns (ip, sourceHost) or null when all sources fail.
+  Future<(String, String)?> _fetchIp(
+      {required bool useProxy, required int port}) async {
+    const sources = [
+      'https://api.ip.sb/ip',
+      'https://ipinfo.io/ip',
+      'https://ifconfig.me/ip',
+    ];
+    for (final url in sources) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          responseType: ResponseType.plain,
+          validateStatus: (_) => true,
+          headers: {'User-Agent': 'nekoray'},
+        ));
+        if (useProxy) {
+          dio.httpClientAdapter = IOHttpClientAdapter(
+            createHttpClient: () {
+              final client = HttpClient();
+              client.findProxy = (uri) => 'PROXY 127.0.0.1:$port';
+              client.badCertificateCallback =
+                  (cert, host, port) => true;
+              return client;
+            },
+          );
+        }
+        final resp = await dio.get(url);
+        if (resp.statusCode == 200) {
+          final ip = _extractIp(resp.data?.toString() ?? '');
+          if (ip != null) return (ip, Uri.parse(url).host);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String? _extractIp(String s) {
+    final t = s.trim().split(RegExp(r'\s+')).firstWhere(
+          (e) => e.isNotEmpty,
+          orElse: () => '',
+        );
+    if (t.isEmpty) return null;
+    if (RegExp(r'^(\d{1,3}\.){3}\d{1,3}$').hasMatch(t)) return t;
+    if (t.contains(':') && !t.contains(' ')) return t; // IPv6 literal
+    return null;
   }
 
   Future<void> _stopService() async {
@@ -463,6 +549,17 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
     return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(2)} MB/s';
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(i18nProvider);
@@ -492,11 +589,18 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
 
     final latestUp = history.isNotEmpty ? history.last.up : 0;
     final latestDown = history.isNotEmpty ? history.last.down : 0;
+    final trafficNotifier = ref.watch(trafficHistoryProvider.notifier);
 
     final globalSites =
         defaultSites.where((s) => s.category == SiteCategory.global).toList();
     final domesticSites =
         defaultSites.where((s) => s.category == SiteCategory.domestic).toList();
+
+    // Fetch egress IPs once the proxy is up (manual refresh anytime).
+    if (!_ipAutoFetched && isConnected) {
+      _ipAutoFetched = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _refreshIps());
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -914,6 +1018,28 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  // Legend + session totals.
+                  Row(
+                    children: [
+                      _LegendDot(
+                          color: scheme.primary,
+                          label: I18n.t('uploadSpeed')),
+                      const SizedBox(width: 12),
+                      _LegendDot(
+                          color: Colors.blue.shade600,
+                          label: I18n.t('downloadSpeed')),
+                      const Spacer(),
+                      Text(
+                        '${I18n.t('totalUpload')}: ${_formatBytes(trafficNotifier.totalUp)}'
+                        ' · ${I18n.t('totalDownload')}: ${_formatBytes(trafficNotifier.totalDown)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   SizedBox(
                     height: 100,
                     child: _TrafficChart(history: history),
@@ -923,7 +1049,83 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          // 2b. Egress IPs: domestic (direct) vs overseas (via proxy)
+          Card(
+            elevation: isDark ? 0 : 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFCBD5E1),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.public, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        I18n.t('ipAddresses'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: _ipLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              )
+                            : const Icon(Icons.refresh, size: 18),
+                        tooltip: I18n.t('testAll'),
+                        onPressed: _ipLoading ? null : _refreshIps,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _IpTile(
+                          icon: Icons.home_outlined,
+                          color: Colors.teal.shade700,
+                          label: I18n.t('domesticIp'),
+                          ip: _directIp,
+                          source: _directSrc,
+                          loading: _ipLoading,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _IpTile(
+                          icon: Icons.flight_outlined,
+                          color: scheme.primary,
+                          label: I18n.t('internationalIp'),
+                          ip: _proxyIp,
+                          source: _proxySrc,
+                          loading: _ipLoading,
+                          offlineHint:
+                              isConnected ? null : I18n.t('disconnected'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
 
           // 3. Website Connectivity & Speed Test
           Card(
@@ -1072,42 +1274,46 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Site favicon with graceful fallback to the material icon.
+            // Site favicon: Google service first, site's own icon second,
+            // material icon when offline.
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                site.faviconUrl,
-                width: 28,
-                height: 28,
-                errorBuilder: (_, __, ___) => Icon(
-                  site.icon,
-                  size: 26,
-                  color: scheme.onSurfaceVariant,
-                ),
+              child: _FaviconImage(
+                urls: [
+                  site.faviconUrl,
+                  'https://${site.domain}/favicon.ico',
+                ],
+                fallbackIcon: site.icon,
               ),
             ),
             const SizedBox(width: 10),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  site.name,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface,
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    site.name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  site.domain,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.onSurfaceVariant,
+                  const SizedBox(height: 2),
+                  Text(
+                    site.domain,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(width: 10),
             if (isTesting)
@@ -1117,20 +1323,26 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: badgeColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: badgeColor.withOpacity(0.4)),
-                ),
-                child: Text(
-                  badgeText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: badgeColor,
-                    fontWeight: FontWeight.bold,
+              // Fixed-width badge so every tile — untested, latency or FAIL —
+              // lines up on the right edge regardless of text length.
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 64),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: badgeColor.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    badgeText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: badgeColor,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -1141,8 +1353,163 @@ class _ConnectionsPageState extends ConsumerState<ConnectionsPage> {
   }
 }
 
-class _TrafficChart extends StatelessWidget {
-  final List<TrafficPoint> history;
+/// Tries favicon URLs in order, falling back to a material icon.
+class _FaviconImage extends StatefulWidget {
+  final List<String> urls;
+  final IconData fallbackIcon;
+  const _FaviconImage({required this.urls, required this.fallbackIcon});
+
+  @override
+  State<_FaviconImage> createState() => _FaviconImageState();
+}
+
+class _FaviconImageState extends State<_FaviconImage> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_index >= widget.urls.length) {
+      return Icon(
+        widget.fallbackIcon,
+        size: 26,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      );
+    }
+    return Image.network(
+      widget.urls[_index],
+      width: 28,
+      height: 28,
+      errorBuilder: (_, __, ___) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _index++);
+        });
+        return Icon(
+          widget.fallbackIcon,
+          size: 26,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        );
+      },
+    );
+  }
+}
+
+/// One egress-IP tile with fixed layout: icon + label on top, mono IP
+/// value, source subtitle. Stays the same size tested or not.
+class _IpTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String? ip;
+  final String? source;
+  final bool loading;
+  final String? offlineHint;
+
+  const _IpTile({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.ip,
+    required this.source,
+    required this.loading,
+    this.offlineHint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final value = ip ??
+        (loading
+            ? '…'
+            : (offlineHint ?? I18n.t('untested')));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black.withOpacity(0.2) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.05)
+              : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: ip != null ? scheme.onSurface : scheme.onSurfaceVariant,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            source ?? '',
+            style: TextStyle(
+              fontSize: 11,
+              color: scheme.onSurfaceVariant,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Legend dot + label for the traffic chart.
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrafficChart extends StatelessWidget {  final List<TrafficPoint> history;
   const _TrafficChart({required this.history});
 
   @override
@@ -1174,6 +1541,27 @@ class _TrafficChart extends StatelessWidget {
         minX: 0,
         maxX: (history.length - 1).toDouble().clamp(10, 60),
         minY: 0,
+        lineTouchData: LineTouchData(
+          enabled: history.length > 1,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) =>
+                Theme.of(context).colorScheme.surfaceContainerHighest,
+            getTooltipItems: (spots) => spots
+                .map(
+                  (s) => LineTooltipItem(
+                    '${s.barIndex == 0 ? '↑' : '↓'} '
+                    '${s.y.toStringAsFixed(1)} KB/s',
+                    TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color:
+                          Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
         lineBarsData: [
           LineChartBarData(
             spots: upSpots,

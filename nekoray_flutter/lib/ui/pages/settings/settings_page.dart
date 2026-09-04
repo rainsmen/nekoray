@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/grpc/grpc_provider.dart';
 import '../../../core/i18n.dart';
@@ -12,6 +13,8 @@ import '../../../core/state/providers.dart';
 import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../core/system/system_integration.dart';
+import '../../../core/version.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/section_header.dart';
 import '../routing/routing_page.dart';
 
@@ -209,6 +212,24 @@ class SettingsPage extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(Icons.language_outlined),
+                  title: Text(t('language')),
+                  trailing: DropdownButton<String>(
+                    value: settings.locale,
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'zh', child: Text('简体中文')),
+                      DropdownMenuItem(value: 'en', child: Text('English')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        notifier.setLocale(val);
+                      }
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.palette_outlined),
                   title: Text(t('themeMode')),
                   subtitle: Text(_getThemeName(settings.themeMode)),
@@ -254,12 +275,91 @@ class SettingsPage extends ConsumerWidget {
                   ),
                 ),
                 const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.color_lens_outlined),
+                  title: Text(t('accentColor')),
+                  trailing: DropdownButton<int>(
+                    value: settings.accent.clamp(0, 3),
+                    items: [
+                      DropdownMenuItem(
+                        value: 0,
+                        child: Row(
+                          children: [
+                            _AccentDot(AppTheme.accentSeeds[0]),
+                            const SizedBox(width: 8),
+                            Text(t('accentIndigo')),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 1,
+                        child: Row(
+                          children: [
+                            _AccentDot(AppTheme.accentSeeds[1]),
+                            const SizedBox(width: 8),
+                            Text(t('accentTeal')),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 2,
+                        child: Row(
+                          children: [
+                            _AccentDot(AppTheme.accentSeeds[2]),
+                            const SizedBox(width: 8),
+                            Text(t('accentPurple')),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 3,
+                        child: Row(
+                          children: [
+                            _AccentDot(AppTheme.accentSeeds[3]),
+                            const SizedBox(width: 8),
+                            Text(t('accentOrange')),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        _guard(context, () => notifier.setAccent(val));
+                      }
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.sync_outlined),
+                  title: Text(t('autoUpdateSubs')),
+                  trailing: DropdownButton<int>(
+                    value: settings.subAutoUpdateHours,
+                    items: [
+                      DropdownMenuItem(
+                          value: 0, child: Text(t('updateOff'))),
+                      DropdownMenuItem(
+                          value: 6, child: Text(t('every6h'))),
+                      DropdownMenuItem(
+                          value: 12, child: Text(t('every12h'))),
+                      DropdownMenuItem(
+                          value: 24, child: Text(t('every24h'))),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        _guard(
+                            context, () => notifier.setSubAutoUpdate(val));
+                      }
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
                 SwitchListTile(
                   secondary: const Icon(Icons.open_in_new),
                   title: Text(t('startWithSystem')),
                   subtitle: Text(SystemIntegration.supportsAutoStart
-                      ? 'Launch minimized when you log in'
-                      : 'Not supported on this platform'),
+                      ? t('autoStartDesc')
+                      : t('notSupported')),
                   value: settings.autoStart,
                   onChanged: SystemIntegration.supportsAutoStart
                       ? (v) => _guard(context, () => notifier.setAutoStart(v))
@@ -269,7 +369,7 @@ class SettingsPage extends ConsumerWidget {
                 SwitchListTile(
                   secondary: const Icon(Icons.close_fullscreen),
                   title: Text(t('minimizeToTray')),
-                  subtitle: const Text('Hide to system tray instead of exiting'),
+                  subtitle: Text(t('minimizeToTrayDesc')),
                   value: settings.minimizeToTray,
                   onChanged: (v) =>
                       _guard(context, () => notifier.setMinimizeToTray(v)),
@@ -287,7 +387,7 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.save_as_outlined),
                   title: Text(t('backupCurrentConfig')),
-                  subtitle: const Text('Create a timestamped local snapshot'),
+                  subtitle: Text(t('backupSnapshotDesc')),
                   trailing: FilledButton.tonal(
                     onPressed: () async {
                       try {
@@ -312,8 +412,8 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.file_upload_outlined),
                   title: Text(t('exportBackup')),
-                  subtitle: const Text('Export full configuration JSON'),
-                  trailing: OutlinedButton(
+                  subtitle: Text(t('exportBackupDesc')),
+                  trailing: FilledButton.tonal(
                     onPressed: () => _exportBackupToFile(context),
                     child: Text(t('exportFile')),
                   ),
@@ -322,8 +422,8 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.file_download_outlined),
                   title: Text(t('importBackup')),
-                  subtitle: const Text('Restore configuration from JSON'),
-                  trailing: OutlinedButton(
+                  subtitle: Text(t('importTileDesc')),
+                  trailing: FilledButton.tonal(
                     onPressed: () => _importBackup(context, ref),
                     child: Text(t('import')),
                   ),
@@ -332,8 +432,8 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.history_outlined),
                   title: Text(t('restoreBackup')),
-                  subtitle: const Text('Browse and restore local snapshots'),
-                  trailing: OutlinedButton(
+                  subtitle: Text(t('restoreTileDesc')),
+                  trailing: FilledButton.tonal(
                     onPressed: () => _showSnapshotsDialog(context, ref),
                     child: Text(t('restoreBackup')),
                   ),
@@ -350,8 +450,8 @@ class SettingsPage extends ConsumerWidget {
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.new_releases_outlined),
-                  title: const Text('Check Pre-Releases (测试版更新)'),
-                  subtitle: const Text('Receive preview and beta updates'),
+                  title: Text(t('preReleaseTitle')),
+                  subtitle: Text(t('preReleaseDesc')),
                   value: settings.checkPreRelease,
                   onChanged: (v) =>
                       ref.read(settingsProvider.notifier).setCheckPreRelease(v),
@@ -360,13 +460,35 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.system_update_alt),
                   title: Text(t('checkUpdates')),
-                  subtitle: const Text('v5.0.0-beta.16 · sing-box 1.13.19'),
-                  trailing: OutlinedButton(
+                  subtitle: Text('$appVersion · sing-box $singBoxVersion'),
+                  trailing: FilledButton.tonal(
                     onPressed: () => _checkUpdates(context, ref),
                     child: Text(t('checkUpdates')),
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 6. About
+          SectionHeader(t('aboutNekoRay'), icon: Icons.info_outlined),
+          Card(
+            child: ListTile(
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/icon/app_logo.png',
+                  width: 36,
+                  height: 36,
+                ),
+              ),
+              title: const Text('NekoRay'),
+              subtitle: Text('$appVersion · sing-box $singBoxVersion'),
+              trailing: FilledButton.tonal(
+                onPressed: () => _showAbout(context),
+                child: Text(t('viewDetails')),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -733,6 +855,75 @@ class SettingsPage extends ConsumerWidget {
   }
 
 
+  Future<void> _showAbout(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                'assets/icon/app_logo.png',
+                width: 40,
+                height: 40,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('NekoRay'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$appVersion · sing-box $singBoxVersion'),
+            const SizedBox(height: 4),
+            const Text('GPL-3.0 · Flutter + sing-box'),
+            const SizedBox(height: 12),
+            for (final link in const [
+              'https://github.com/rainsmen/nekoray',
+              'https://github.com/rainsmen/nekoray/issues',
+              'https://github.com/rainsmen/nekoray/releases',
+            ])
+              TextButton.icon(
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: Text(
+                  link,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                onPressed: () => _openUrl(ctx, link),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(I18n.t('cancel')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openUrl(BuildContext context, String url) async {
+    try {
+      final ok = await launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(url)),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(url)),
+        );
+      }
+    }
+  }
+
   static Future<void> _guard(
     BuildContext context,
     Future<void> Function() action,
@@ -839,6 +1030,21 @@ String _stackName(int v) => switch (v) {
       2 => 'mixed',
       _ => 'gvisor',
     };
+
+/// Color dot preview for the accent picker.
+class _AccentDot extends StatelessWidget {
+  final Color color;
+  const _AccentDot(this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
 
 /// Privilege banner for TUN mode. Stateful so the (fast, side-effect free)
 /// elevation probe runs once instead of on every settings rebuild.

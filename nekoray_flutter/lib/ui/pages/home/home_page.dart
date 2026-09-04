@@ -15,7 +15,6 @@ import '../../../core/state/settings.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../core/system/system_integration.dart';
 import '../../pages/connections/connections_page.dart';
-import '../../pages/dns/dns_page.dart';
 import '../../pages/logs/logs_page.dart';
 import '../../pages/profile/profile_edit_dialog.dart';
 import '../../pages/routing/routing_page.dart';
@@ -24,7 +23,7 @@ import '../../widgets/proxy_card.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/status_bar.dart';
 
-enum HomePageTab { dashboard, profiles, routing, dns, logs, settings }
+enum HomePageTab { dashboard, profiles, routing, logs, settings }
 
 final homeTabProvider = StateProvider<HomePageTab>((ref) => HomePageTab.dashboard);
 
@@ -78,120 +77,207 @@ class _HomePageState extends ConsumerState<HomePage> {
         content: Text('${corrupt.length} profile file(s) could not be read and were skipped'),
       ));
     }
+
+    await _maybeAutoRefreshSubs();
+  }
+
+  /// Refreshes subscriptions on startup when the configured interval elapsed.
+  /// Silent unless something was actually updated.
+  Future<void> _maybeAutoRefreshSubs() async {
+    final settings = ref.read(settingsProvider);
+    final hours = settings.subAutoUpdateHours;
+    if (hours <= 0) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (now - settings.subAutoUpdatedAt < hours * 3600) return;
+
+    final groups = (ref.read(groupListProvider).valueOrNull ?? const [])
+        .where((g) => g.url.isNotEmpty)
+        .toList();
+    if (groups.isEmpty) return;
+    if (!ref.read(grpcClientProvider).isConnected) return;
+
+    final client = ref.read(grpcClientProvider);
+    final notifier = ref.read(profileListProvider.notifier);
+    var ok = 0;
+    for (final g in groups) {
+      try {
+        if (await notifier.refreshSubscription(g, client) == null) ok++;
+      } catch (e) {
+        ref
+            .read(coreLogProvider.notifier)
+            .add('[WARN] Auto-refresh failed for ${g.name}: $e');
+      }
+    }
+    await ref.read(groupListProvider.notifier).load();
+    await ref.read(settingsProvider.notifier).markSubsAutoUpdated();
+    if (ok > 0) {
+      ref
+          .read(coreLogProvider.notifier)
+          .add('[INFO] Auto-refreshed $ok subscription(s)');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('${I18n.t('subsRefreshed')}: $ok/${groups.length}'),
+        ));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     ref.watch(i18nProvider);
     final tab = ref.watch(homeTabProvider);
-    void select(int i) =>
-        ref.read(homeTabProvider.notifier).state = HomePageTab.values[i];
 
     if (ResponsiveLayout.isMobile(context)) {
       return Scaffold(
-        body: _buildContent(tab),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab.index,
-          onDestinationSelected: select,
-          destinations: [
-            NavigationDestination(
-                icon: const Icon(Icons.dashboard_outlined), label: I18n.t('dashboard')),
-            NavigationDestination(
-                icon: const Icon(Icons.list_outlined), label: I18n.t('profiles')),
-            NavigationDestination(
-                icon: const Icon(Icons.alt_route), label: I18n.t('routing')),
-            NavigationDestination(
-                icon: const Icon(Icons.dns_outlined), label: I18n.t('dns')),
-            NavigationDestination(
-                icon: const Icon(Icons.article_outlined), label: I18n.t('logs')),
-            NavigationDestination(
-                icon: const Icon(Icons.settings_outlined), label: I18n.t('settings')),
+        body: buildContent(tab),
+        bottomNavigationBar: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _GlobalStatusBar(),
+            _MobileNavBar(),
           ],
         ),
       );
     }
 
-    return Scaffold(
-      body: Row(
+    return const Scaffold(
+      body: Column(
         children: [
-          NavigationRail(
-            selectedIndex: tab.index,
-            onDestinationSelected: select,
-            labelType: NavigationRailLabelType.all,
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primaryContainer
-                      .withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.public,
-                  size: 28,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            destinations: [
-              NavigationRailDestination(
-                icon: const Icon(Icons.dashboard_outlined),
-                selectedIcon: const Icon(Icons.dashboard),
-                label: Text(I18n.t('dashboard')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.list_outlined),
-                selectedIcon: const Icon(Icons.list),
-                label: Text(I18n.t('profiles')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.alt_route),
-                selectedIcon: const Icon(Icons.alt_route),
-                label: Text(I18n.t('routing')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.dns_outlined),
-                selectedIcon: const Icon(Icons.dns),
-                label: Text(I18n.t('dns')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.article_outlined),
-                selectedIcon: const Icon(Icons.article),
-                label: Text(I18n.t('logs')),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.settings_outlined),
-                selectedIcon: const Icon(Icons.settings),
-                label: Text(I18n.t('settings')),
-              ),
-            ],
+          Expanded(
+            child: _DesktopBody(),
           ),
-          VerticalDivider(
-              width: 1, color: Theme.of(context).colorScheme.outlineVariant),
-          Expanded(child: _buildContent(tab)),
+          _GlobalStatusBar(),
         ],
       ),
     );
   }
+}
 
-  Widget _buildContent(HomePageTab tab) {
-    switch (tab) {
-      case HomePageTab.dashboard:
-        return const ConnectionsPage();
-      case HomePageTab.profiles:
-        return const _ProfilesTab();
-      case HomePageTab.routing:
-        return const RoutingPage();
-      case HomePageTab.dns:
-        return const DnsPage();
-      case HomePageTab.logs:
-        return const LogsPage();
-      case HomePageTab.settings:
-        return const SettingsPage();
-    }
+/// Page body shared by desktop and mobile shells.
+Widget buildContent(HomePageTab tab) {
+  switch (tab) {
+    case HomePageTab.dashboard:
+      return const ConnectionsPage();
+    case HomePageTab.profiles:
+      return const _ProfilesTab();
+    case HomePageTab.routing:
+      return const RoutingPage();
+    case HomePageTab.logs:
+      return const LogsPage();
+    case HomePageTab.settings:
+      return const SettingsPage();
+  }
+}
+
+/// Global connection/traffic footer, visible on every tab.
+class _GlobalStatusBar extends ConsumerWidget {
+  const _GlobalStatusBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final connectedId = ref.watch(connectedProfileProvider);
+    final traffic = ref.watch(trafficHistoryProvider);
+    final latest = traffic.isEmpty ? null : traffic.last;
+    return StatusBar(
+      connected: connectedId != 0,
+      up: latest?.up ?? 0,
+      down: latest?.down ?? 0,
+    );
+  }
+}
+
+class _MobileNavBar extends ConsumerWidget {
+  const _MobileNavBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(i18nProvider);
+    final tab = ref.watch(homeTabProvider);
+    return NavigationBar(
+      selectedIndex: tab.index,
+      onDestinationSelected: (i) => ref
+          .read(homeTabProvider.notifier)
+          .state = HomePageTab.values[i],
+      destinations: [
+        NavigationDestination(
+            icon: const Icon(Icons.dashboard_outlined),
+            label: I18n.t('dashboard')),
+        NavigationDestination(
+            icon: const Icon(Icons.list_outlined),
+            label: I18n.t('profiles')),
+        NavigationDestination(
+            icon: const Icon(Icons.alt_route), label: I18n.t('routing')),
+        NavigationDestination(
+            icon: const Icon(Icons.article_outlined),
+            label: I18n.t('logs')),
+        NavigationDestination(
+            icon: const Icon(Icons.settings_outlined),
+            label: I18n.t('settings')),
+      ],
+    );
+  }
+}
+
+class _DesktopBody extends ConsumerWidget {
+  const _DesktopBody();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(i18nProvider);
+    final tab = ref.watch(homeTabProvider);
+    return Row(
+      children: [
+        NavigationRail(
+          selectedIndex: tab.index,
+          onDestinationSelected: (i) => ref
+              .read(homeTabProvider.notifier)
+              .state = HomePageTab.values[i],
+          labelType: NavigationRailLabelType.all,
+          leading: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/icon/app_logo.png',
+                width: 44,
+                height: 44,
+              ),
+            ),
+          ),
+          destinations: [
+            NavigationRailDestination(
+              icon: const Icon(Icons.dashboard_outlined),
+              selectedIcon: const Icon(Icons.dashboard),
+              label: Text(I18n.t('dashboard')),
+            ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.list_outlined),
+              selectedIcon: const Icon(Icons.list),
+              label: Text(I18n.t('profiles')),
+            ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.alt_route),
+              selectedIcon: const Icon(Icons.alt_route),
+              label: Text(I18n.t('routing')),
+            ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.article_outlined),
+              selectedIcon: const Icon(Icons.article),
+              label: Text(I18n.t('logs')),
+            ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.settings_outlined),
+              selectedIcon: const Icon(Icons.settings),
+              label: Text(I18n.t('settings')),
+            ),
+          ],
+        ),
+        VerticalDivider(
+            width: 1, color: Theme.of(context).colorScheme.outlineVariant),
+        Expanded(child: buildContent(tab)),
+      ],
+    );
   }
 }
 
@@ -212,6 +298,13 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
   bool _selecting = false;
   final Set<int> _selected = {};
   bool _refreshingSubs = false;
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -231,8 +324,6 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
     final selectedGroup = ref.watch(selectedGroupProvider);
     final connectedId = ref.watch(connectedProfileProvider);
     final connection = ref.watch(coreConnectionProvider);
-    final traffic = ref.watch(trafficHistoryProvider);
-    final latest = traffic.isEmpty ? null : traffic.last;
 
     return Column(
       children: [
@@ -244,8 +335,20 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
             children: [
               Expanded(
                 child: TextField(
+                  controller: _searchCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
+                    suffixIcon: ref.watch(searchQueryProvider).isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              ref
+                                  .read(searchQueryProvider.notifier)
+                                  .state = '';
+                            },
+                          ),
                     hintText: I18n.t('searchProfiles'),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8)),
@@ -377,7 +480,7 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
                   itemBuilder: (context, i) {
                     final p = profiles[i];
                     final isSelected = _selected.contains(p.id);
-                    return ProxyCard(
+                    final card = ProxyCard(
                       name: p.name,
                       type: p.type,
                       address: p.address,
@@ -401,6 +504,15 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
                           ? null
                           : () => _testOne(p),
                     );
+                    // Desktop habits: double-click toggles, right-click opens
+                    // the same actions as the tap sheet without covering the
+                    // list. Mobile keeps tap/long-press behavior.
+                    return GestureDetector(
+                      onSecondaryTapDown: (d) =>
+                          _nodeContextMenu(context, ref, p, d.globalPosition),
+                      onDoubleTap: () => _toggleNode(context, ref, p),
+                      child: card,
+                    );
                   },
                 ),
         ),
@@ -422,6 +534,19 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
                 Text(
                     '${I18n.t('selectedCount')}: ${_selected.length}'),
                 const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.select_all),
+                  tooltip: I18n.t('selectAll'),
+                  onPressed: () => setState(() => _selected.addAll(
+                      [for (final p in profiles) p.id])),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.deselect_outlined),
+                  tooltip: I18n.t('deselectAll'),
+                  onPressed: _selected.isEmpty
+                      ? null
+                      : () => setState(() => _selected.clear()),
+                ),
                 IconButton(
                   icon: const Icon(Icons.bolt_outlined),
                   tooltip: I18n.t('testSelected'),
@@ -453,11 +578,6 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
               ],
             ),
           ),
-        StatusBar(
-          connected: connectedId != 0,
-          up: latest?.up ?? 0,
-          down: latest?.down ?? 0,
-        ),
       ],
     );
   }
@@ -537,6 +657,73 @@ class _ProfilesTabState extends ConsumerState<_ProfilesTab> {
     messenger.showSnackBar(err == null
         ? const SnackBar(content: Text('Subscription imported'))
         : SnackBar(content: Text(err), backgroundColor: Colors.red));
+  }
+
+  /// Double-click toggles the node: start it, or stop it when running.
+  Future<void> _toggleNode(
+      BuildContext context, WidgetRef ref, ProxyEntity profile) async {
+    if (_selecting) return;
+    if (ref.read(connectedProfileProvider) == profile.id) {
+      await _stop(context, ref);
+    } else {
+      await _start(context, ref, profile);
+    }
+  }
+
+  /// Desktop right-click menu mirroring the tap bottom sheet.
+  Future<void> _nodeContextMenu(BuildContext context, WidgetRef ref,
+      ProxyEntity profile, Offset position) async {
+    final running = ref.read(connectedProfileProvider) == profile.id;
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
+      items: [
+        PopupMenuItem(
+          value: 'toggle',
+          child: Text(running ? I18n.t('stop') : I18n.t('start')),
+        ),
+        PopupMenuItem(
+          value: 'test',
+          child: Text(I18n.t('testLatency')),
+        ),
+        PopupMenuItem(
+          value: 'share',
+          child: Text(I18n.t('shareLink')),
+        ),
+        PopupMenuItem(
+          value: 'rename',
+          child: Text(I18n.t('rename')),
+        ),
+        PopupMenuItem(
+          value: 'edit',
+          child: Text(I18n.t('edit')),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: Text(I18n.t('delete'),
+              style: const TextStyle(color: Colors.red)),
+        ),
+      ],
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case 'toggle':
+        await _toggleNode(context, ref, profile);
+      case 'test':
+        await _testOne(profile);
+      case 'share':
+        await _shareLink(context, ref, profile);
+      case 'rename':
+        await _rename(context, ref, profile);
+      case 'edit':
+        await showDialog<void>(
+          context: context,
+          builder: (_) => ProfileEditDialog(existing: profile),
+        );
+      case 'delete':
+        await _confirmDelete(context, ref, profile);
+    }
   }
 
   void _showProfileActions(

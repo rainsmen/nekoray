@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/grpc/grpc_provider.dart';
 import 'core/i18n.dart';
+import 'core/state/providers.dart';
 import 'core/state/settings.dart';
 import 'core/system/system_integration.dart';
 import 'ui/pages/home/home_page.dart';
@@ -43,15 +44,44 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
   }
 
   Future<void> _initTray() async {
+    await _syncTrayMenu();
+  }
+
+  /// Rebuilds the tray menu + tooltip from live state: node name, running
+  /// state, proxy/TUN switches, all localized. Called on init and whenever
+  /// settings, connection, profiles or locale change.
+  Future<void> _syncTrayMenu() async {
+    if (!_isDesktop) return;
     try {
-      // The tooltip says the proxy keeps running: with minimize-to-tray on,
-      // closing the window hides (not quits) the app, and users otherwise
-      // mistake the live tray process for a folder lock / zombie.
-      await trayManager.setToolTip('NekoRay (running, proxy active)');
+      final settings = ref.read(settingsProvider);
+      final runningId = ref.read(connectedProfileProvider);
+      final running = runningId > 0;
+      final profiles =
+          ref.read(profileListProvider).valueOrNull ?? const [];
+      var nodeName = I18n.t('noActiveNode');
+      for (final p in profiles) {
+        if (p.id == runningId) {
+          nodeName = p.name.isEmpty ? p.address : p.name;
+          break;
+        }
+      }
+      final on = I18n.t('enabled');
+      final off = I18n.t('disabled');
+      await trayManager.setToolTip(
+          'NekoRay · $nodeName · ${running ? I18n.t('connected') : I18n.t('disconnected')}');
       await trayManager.setContextMenu(Menu(items: [
-        MenuItem(key: 'show', label: 'Show'),
+        MenuItem(key: 'show', label: I18n.t('trayShow')),
+        MenuItem(key: 'show-node', label: nodeName),
         MenuItem.separator(),
-        MenuItem(key: 'quit', label: 'Quit'),
+        MenuItem(
+            key: 'toggle-proxy',
+            label:
+                '${I18n.t('trayProxy')}: ${settings.systemProxy ? on : off}'),
+        MenuItem(
+            key: 'toggle-tun',
+            label: '${I18n.t('trayTun')}: ${settings.tunMode ? on : off}'),
+        MenuItem.separator(),
+        MenuItem(key: 'quit', label: I18n.t('trayQuit')),
       ]));
     } catch (_) {
       // A missing tray (headless session, no appindicator) is not fatal.
@@ -83,10 +113,24 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) async {
+    final notifier = ref.read(settingsProvider.notifier);
     switch (menuItem.key) {
       case 'show':
+      case 'show-node':
         await windowManager.show();
         await windowManager.focus();
+        break;
+      case 'toggle-proxy':
+        try {
+          await notifier.setSystemProxy(!ref.read(settingsProvider).systemProxy);
+        } catch (_) {}
+        await _syncTrayMenu();
+        break;
+      case 'toggle-tun':
+        try {
+          await notifier.setTunMode(!ref.read(settingsProvider).tunMode);
+        } catch (_) {}
+        await _syncTrayMenu();
         break;
       case 'quit':
         await _quit();
@@ -132,6 +176,11 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
 
   @override
   Widget build(BuildContext context) {
+    // Keep the tray in sync without polling: any relevant change rebuilds it.
+    ref.listen(settingsProvider, (_, __) => _syncTrayMenu());
+    ref.listen(connectedProfileProvider, (_, __) => _syncTrayMenu());
+    ref.listen(profileListProvider, (_, __) => _syncTrayMenu());
+    ref.listen(localeProvider, (_, __) => _syncTrayMenu());
     final settings = ref.watch(settingsProvider);
     final themeMode = switch (settings.themeMode) {
       'dark' => ThemeMode.dark,
@@ -149,8 +198,8 @@ class _NekoRayAppState extends ConsumerState<NekoRayApp>
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.light(accent: settings.accent),
+      darkTheme: AppTheme.dark(accent: settings.accent),
       themeMode: themeMode,
       home: const HomePage(),
     );

@@ -18,4 +18,8 @@ CORE=$(grep -E 'CoreVersion = ' go/cmd/nekobox_core/core_box.go | sed 's/.*"\(.*
 [ -n "$CORE" ] || die "CoreVersion not found in go/cmd/nekobox_core/core_box.go"
 [ "$VERSION" = "$CORE" ] || die "version drift: nekoray_version.txt=$VERSION CoreVersion=$CORE"
 
-echo "version OK: $VERSION (version.txt = pubspec = CoreVersion)"
+DARTVER=$(grep -E "^const appVersion = " nekoray_flutter/lib/core/version.dart | sed "s/.*'\(.*\)'.*/\1/" || true)
+[ -n "$DARTVER" ] || die "appVersion not found in nekoray_flutter/lib/core/version.dart"
+[ "$VERSION" = "$DARTVER" ] || die "version drift: nekoray_version.txt=$VERSION appVersion=$DARTVER"
+
+echo "version OK: $VERSION (version.txt = pubspec = CoreVersion = appVersion)"

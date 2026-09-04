@@ -23,12 +23,24 @@ final directDnsPresets = <String, String>{
   'Local System': 'local',
 };
 
-final dnsStrategies = <String, String>{
-  'ipv4_only': 'IPv4 Only (推荐)',
-  'prefer_ipv4': 'Prefer IPv4',
-  'prefer_ipv6': 'Prefer IPv6',
-  'ipv6_only': 'IPv6 Only',
-};
+const _knownStrategies = [
+  'ipv4_only',
+  'prefer_ipv4',
+  'prefer_ipv6',
+  'ipv6_only',
+];
+
+String _knownStrategy(String v) =>
+    _knownStrategies.contains(v) ? v : 'ipv4_only';
+
+/// Strategy value → i18n key suffix. Display strings come from the string
+/// table (`dnsStrat_*`) so the dropdown is fully localized.
+String dnsStrategyLabel(String value) {
+  const known = {'ipv4_only', 'prefer_ipv4', 'prefer_ipv6', 'ipv6_only'};
+  final v = known.contains(value) ? value : 'ipv4_only';
+  final label = I18n.t('dnsStrat_$v');
+  return label == 'dnsStrat_$v' ? v : label;
+}
 
 class DnsPage extends ConsumerWidget {
   const DnsPage({super.key});
@@ -140,18 +152,22 @@ class DnsPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      initialValue: dnsStrategies.containsKey(config.remoteDnsStrategy)
-                          ? config.remoteDnsStrategy
-                          : 'ipv4_only',
-                      decoration: const InputDecoration(
-                        labelText: 'Remote DNS Strategy',
+                      initialValue: _knownStrategy(config.remoteDnsStrategy),
+                      decoration: InputDecoration(
+                        labelText: I18n.t('dnsStrategy'),
                         isDense: true,
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                       ),
-                      items: dnsStrategies.entries
-                          .map((e) => DropdownMenuItem(
-                                value: e.key,
-                                child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                      items: const [
+                        'ipv4_only',
+                        'prefer_ipv4',
+                        'prefer_ipv6',
+                        'ipv6_only'
+                      ]
+                          .map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(dnsStrategyLabel(v),
+                                    style: const TextStyle(fontSize: 13)),
                               ))
                           .toList(),
                       onChanged: (val) {
@@ -221,18 +237,22 @@ class DnsPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      initialValue: dnsStrategies.containsKey(config.directDnsStrategy)
-                          ? config.directDnsStrategy
-                          : 'ipv4_only',
-                      decoration: const InputDecoration(
-                        labelText: 'Direct DNS Strategy',
+                      initialValue: _knownStrategy(config.directDnsStrategy),
+                      decoration: InputDecoration(
+                        labelText: I18n.t('dnsStrategy'),
                         isDense: true,
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                       ),
-                      items: dnsStrategies.entries
-                          .map((e) => DropdownMenuItem(
-                                value: e.key,
-                                child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                      items: const [
+                        'ipv4_only',
+                        'prefer_ipv4',
+                        'prefer_ipv6',
+                        'ipv6_only'
+                      ]
+                          .map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(dnsStrategyLabel(v),
+                                    style: const TextStyle(fontSize: 13)),
                               ))
                           .toList(),
                       onChanged: (val) {
@@ -338,25 +358,55 @@ class _DnsInputRow extends StatefulWidget {
 
 class _DnsInputRowState extends State<_DnsInputRow> {
   late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode()..addListener(_onFocusChange);
   }
 
   @override
   void didUpdateWidget(covariant _DnsInputRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
+    if (oldWidget.value != widget.value &&
+        _controller.text != widget.value) {
       _controller.text = widget.value;
     }
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Save-on-blur: losing focus commits valid input, reverting to the last
+  /// saved value when the text is not a usable DNS endpoint.
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) return;
+    final v = _controller.text.trim();
+    if (v == widget.value) return;
+    if (_isValidEndpoint(v)) {
+      widget.onSubmit(v);
+    } else {
+      _controller.text = widget.value;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(I18n.t('formInvalidDns'))),
+      );
+    }
+  }
+
+  static bool _isValidEndpoint(String v) {
+    if (v.isEmpty || v == 'local') return true;
+    if (v.contains('://')) {
+      final uri = Uri.tryParse(v);
+      return uri != null && uri.host.isNotEmpty;
+    }
+    return RegExp(r'^(\d{1,3}\.){3}\d{1,3}$').hasMatch(v);
   }
 
   @override
@@ -366,19 +416,40 @@ class _DnsInputRowState extends State<_DnsInputRow> {
         Expanded(
           child: TextField(
             controller: _controller,
+            focusNode: _focusNode,
             decoration: InputDecoration(
               hintText: widget.hint,
               isDense: true,
               border: const OutlineInputBorder(),
             ),
-            onSubmitted: (v) => widget.onSubmit(v.trim()),
+            onSubmitted: (v) {
+              final t = v.trim();
+              if (_isValidEndpoint(t)) {
+                widget.onSubmit(t);
+              } else {
+                _controller.text = widget.value;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(I18n.t('formInvalidDns'))),
+                );
+              }
+            },
           ),
         ),
         const SizedBox(width: 8),
         IconButton.filledTonal(
           icon: const Icon(Icons.check, size: 18),
           tooltip: I18n.t('save'),
-          onPressed: () => widget.onSubmit(_controller.text.trim()),
+          onPressed: () {
+            final t = _controller.text.trim();
+            if (_isValidEndpoint(t)) {
+              widget.onSubmit(t);
+            } else {
+              _controller.text = widget.value;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(I18n.t('formInvalidDns'))),
+              );
+            }
+          },
         ),
       ],
     );

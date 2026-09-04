@@ -47,6 +47,10 @@ jobs:
         working-directory: nekoray_flutter
         run: flutter create --platforms=android .
 
+      - name: Apply app icon
+        working-directory: nekoray_flutter
+        run: dart run flutter_launcher_icons
+
       - name: Install dependencies
         working-directory: nekoray_flutter
         run: flutter pub get

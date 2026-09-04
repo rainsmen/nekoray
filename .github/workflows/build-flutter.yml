@@ -85,6 +85,10 @@ jobs:
         working-directory: nekoray_flutter
         run: flutter create --platforms=${{ matrix.target }} .
 
+      - name: Apply app icon
+        working-directory: nekoray_flutter
+        run: dart run flutter_launcher_icons
+
       - name: Build
         working-directory: nekoray_flutter
         run: flutter build ${{ matrix.target }} --release

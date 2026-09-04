@@ -262,7 +262,15 @@ class _LogsPageState extends ConsumerState<LogsPage> {
                             child: SelectableText(
                               line,
                               style: TextStyle(
-                                fontFamily: 'monospace',
+                                fontFamilyFallback: const [
+                                  'Cascadia Code',
+                                  'Consolas',
+                                  'Menlo',
+                                  'Monaco',
+                                  'Fira Code',
+                                  'Noto Sans Mono',
+                                  'monospace',
+                                ],
                                 fontSize: 12.5,
                                 height: 1.4,
                                 color: color,

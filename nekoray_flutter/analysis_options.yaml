@@ -10,6 +10,10 @@ analyzer:
     - "lib/**/*.g.dart"
     - "lib/**/*.freezed.dart"
     - build/**
+    - android/**
+    - windows/**
+    - macos/**
+    - linux/**
   errors:
     missing_required_param: error
     deprecated_member_use: false
